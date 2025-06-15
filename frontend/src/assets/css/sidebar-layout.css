@@ -1,0 +1,101 @@
+/* Sidebar Layout Optimization CSS */
+
+/* Main content wrapper transitions */
+.main-content-wrapper {
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.content-expand-animation {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Sidebar positioning and sizing */
+#main-sidebar {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#main-sidebar[data-state="closed"] {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+}
+
+#main-sidebar[data-state="open"] {
+  width: 16rem !important;
+  min-width: 16rem !important;
+  max-width: 16rem !important;
+  pointer-events: auto;
+  opacity: 1;
+}
+
+/* Body classes for layout management */
+.sidebar-is-open .main-content-wrapper {
+  margin-left: 16rem;
+  width: calc(100% - 16rem);
+}
+
+body:not(.sidebar-is-open) .main-content-wrapper {
+  margin-left: 0;
+  width: 100%;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1023px) {
+  .main-content-wrapper {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+  
+  .sidebar-is-open .main-content-wrapper {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+}
+
+/* Scrollbar styling for sidebar */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(209 213 219);
+  border-radius: 2px;
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105);
+}
+
+/* Smooth transitions for all sidebar elements */
+.sidebar-visible {
+  visibility: visible !important;
+}
+
+/* Performance optimizations */
+#main-sidebar,
+.main-content-wrapper {
+  will-change: transform, width, margin-left;
+}
+
+/* Ensure proper layering */
+#main-sidebar {
+  z-index: 40;
+}
+
+.main-content-wrapper {
+  z-index: 10;
+}

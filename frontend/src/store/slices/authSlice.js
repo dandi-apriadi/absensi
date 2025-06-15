@@ -6,6 +6,21 @@ const api = axios.create({
     withCredentials: true, // Setel secara global
 });
 
+const getInitialSidebarState = () => {
+    // Check if we're in browser environment
+    if (typeof window !== 'undefined') {
+        // Check if user preference is saved in localStorage
+        const savedState = localStorage.getItem('sidebarOpen');
+        if (savedState !== null) {
+            return JSON.parse(savedState);
+        }
+        // Default to open on desktop, closed on mobile
+        return window.innerWidth >= 1024;
+    }
+    // Default to true for SSR
+    return true;
+};
+
 const initialState = {
     user: null,
     baseURL: "http://localhost:5001",
@@ -16,7 +31,7 @@ const initialState = {
     isSuccess: false,
     isLoading: false,
     message: "",
-    sidebarOpen: false, // Add sidebar state
+    sidebarOpen: getInitialSidebarState(), // Smart default based on screen size and user preference
 };
 
 // Thunk untuk mendapatkan data pengguna
@@ -71,16 +86,27 @@ export const authSlice = createSlice({
         reset: (state) => initialState,
         setMicroPage: (state, action) => {
             state.microPage = action.payload;
-        },
-        // Simplified sidebar actions with proper immutability
+        },        // Sidebar actions with localStorage persistence
         toggleSidebar: (state) => {
             state.sidebarOpen = !state.sidebarOpen;
+            // Save to localStorage
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('sidebarOpen', JSON.stringify(state.sidebarOpen));
+            }
         },
         openSidebar: (state) => {
             state.sidebarOpen = true;
+            // Save to localStorage
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('sidebarOpen', JSON.stringify(true));
+            }
         },
         closeSidebar: (state) => {
             state.sidebarOpen = false;
+            // Save to localStorage
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('sidebarOpen', JSON.stringify(false));
+            }
         }
     },
     extraReducers: (builder) => {
