@@ -1,0 +1,66 @@
+# Node.js
+node_modules/
+.env
+package-lock.json
+yarn.lock
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+/dist/
+/build/
+
+# VSCode
+.vscode/
+
+# Frontend
+frontend/node_modules/
+frontend/.env
+frontend/package-lock.json
+frontend/yarn.lock
+
+# Backend
+backend/node_modules/
+backend/.env
+backend/package-lock.json
+backend/yarn.lock
+
+# Public uploads (if not tracked)
+backend/public/uploads/
+backend/public/images/profiles/
+
+# Misc
+*.local
+*.sublime-workspace
+*.sublime-project
+
+# Ignore test coverage
+coverage/
+
+# Ignore IDE files
+.idea/
+*.iml
+
+# Ignore temp files
+*.tmp
+*.swp
+
+# Ignore by file type
+*.bak
+*.tmp
+*.swp
+*.swo
+
+# Ignore notes (optional, remove if you want to track these)
+note.txt
+note.text
+fitur.txt

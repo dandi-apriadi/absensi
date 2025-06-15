@@ -1,0 +1,26 @@
+/* Sidebar visibility fixes */
+.sidebar-visible {
+  visibility: visible !important;
+  transform: translateX(0) !important;
+  box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+}
+
+body.sidebar-is-open {
+  overflow-x: hidden;
+}
+
+/* Enhanced transitions */
+#main-sidebar {
+  will-change: transform;
+  transition: transform 0.3s ease-in-out, visibility 0s linear;
+}
+
+/* Ensure content slides smoothly */
+.sidebar-is-open #main-content {
+  margin-left: 16rem; /* 256px/16 = 16rem */
+}
+
+/* Improved mobile backdrop */
+.sidebar-backdrop {
+  transition: opacity 0.3s ease-in-out;
+}

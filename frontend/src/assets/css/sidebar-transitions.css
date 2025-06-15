@@ -1,0 +1,38 @@
+/* Main content transitions */
+#main-content-wrapper {
+  transition: width 0.3s ease-in-out, margin-left 0.3s ease-in-out;
+  will-change: width, margin-left;
+}
+
+/* Ensure content slides smoothly */
+.sidebar-is-open #main-content-wrapper {
+  width: calc(100% - 16rem) !important;
+  margin-left: 16rem !important;
+}
+
+/* When sidebar is closed */
+body:not(.sidebar-is-open) #main-content-wrapper {
+  width: 100% !important;
+  margin-left: 0 !important;
+}
+
+/* Improve space utilization when sidebar is closed */
+body:not(.sidebar-is-open) .content-container {
+  max-width: 100%;
+  padding-left: 2rem;
+  padding-right: 2rem;
+}
+
+/* Make sure content doesn't shift abruptly */
+@media (min-width: 1024px) {
+  body:not(.sidebar-is-open) .content-container {
+    max-width: 90rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* Improved sidebar transition */
+#main-sidebar {
+  transition: transform 0.3s ease-in-out, visibility 0s;
+}
