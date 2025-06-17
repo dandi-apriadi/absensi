@@ -80,7 +80,6 @@ import BackupRestore from "../views/super-admin/settings/components/BackupRestor
 import Help from "../views/super-admin/help";
 import UserGuide from "../views/super-admin/help/components/UserGuide";
 import FAQ from "../views/super-admin/help/components/FAQ";
-import ContactSupport from "../views/super-admin/help/components/ContactSupport";
 import ReportGenerator from "../views/super-admin/reports";
 import GenerateReports from "../views/super-admin/reports/components/GenerateReports";
 import ScheduledReports from "../views/super-admin/reports/components/ScheduledReports";
@@ -450,15 +449,6 @@ const routes = [
     path: "faq",
     icon: <MdMessage className="h-6 w-6 ml-10" />,
     component: <FAQ />,
-    secondary: true,
-  },
-  {
-    name: "Hubungi Support",
-    layout: "/super-admin",
-    parentPath: "help",
-    path: "contact-support",
-    icon: <MdEmail className="h-6 w-6 ml-10" />,
-    component: <ContactSupport />,
     secondary: true,
   },
   {

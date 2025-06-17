@@ -173,12 +173,12 @@ const FAQ = () => {
                                 >
                                     <div className="flex items-start">
                                         <MdQuestionAnswer className={`h-5 w-5 mt-0.5 ${activeQuestions.includes(faq.id)
-                                                ? "text-indigo-600"
-                                                : "text-gray-400"
+                                            ? "text-indigo-600"
+                                            : "text-gray-400"
                                             }`} />
                                         <span className={`ml-3 font-medium ${activeQuestions.includes(faq.id)
-                                                ? "text-indigo-800"
-                                                : "text-gray-800"
+                                            ? "text-indigo-800"
+                                            : "text-gray-800"
                                             }`}>
                                             {faq.question}
                                         </span>

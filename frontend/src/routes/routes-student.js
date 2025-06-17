@@ -28,7 +28,6 @@ import {
 
 // Import components (these would need to be created)
 import StudentDashboard from "views/student/dashboard";
-import AttendanceStats from "views/student/dashboard/components/AttendanceStats";
 import AttendanceCalendar from "views/student/dashboard/components/AttendanceCalendar";
 import CourseSchedule from "views/student/courses";
 import CourseList from "views/student/courses/components/CourseList";
@@ -55,15 +54,6 @@ const routes = [
     path: "default",
     icon: <MdDashboard className="h-6 w-6" />,
     component: <StudentDashboard />,
-  },
-  {
-    name: "Statistik Kehadiran",
-    layout: "/student",
-    parentPath: "default",
-    path: "attendance-stats",
-    icon: <MdAssessment className="h-6 w-6 ml-10" />,
-    component: <AttendanceStats />,
-    secondary: true,
   },
   {
     name: "Kalender Kehadiran",

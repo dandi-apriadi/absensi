@@ -87,12 +87,12 @@ const Sidebar = ({ onClose }) => {
   const routes = useMemo(() => {
     try {
       const roleRoutes = {
-        'admin': routesAdmin,
-        'lecture': routesLecture,
+        'super-admin': routesAdmin,
+        'lecturer': routesLecture,
         'student': routesStudent,
       };
 
-      const selectedRoutes = roleRoutes[user?.role] || routesLecture;
+      const selectedRoutes = roleRoutes[user?.role] || routesStudent;
       return validateRoutes(selectedRoutes);
     } catch (error) {
       console.error("Error processing routes:", error);
@@ -103,14 +103,14 @@ const Sidebar = ({ onClose }) => {
   // Simplified and cleaner color scheme
   const roleColorScheme = useMemo(() => {
     const schemes = {
-      'admin': {
+      'super-admin': {
         primary: 'from-red-500 to-red-600',
         bg: 'bg-red-50/60',
         accent: 'bg-red-500',
         text: 'text-red-700',
         border: 'border-red-200'
       },
-      'lecture': {
+      'lecturer': {
         primary: 'from-blue-500 to-indigo-600',
         bg: 'bg-blue-50/60',
         accent: 'bg-blue-500',
@@ -125,7 +125,7 @@ const Sidebar = ({ onClose }) => {
         border: 'border-emerald-200'
       }
     };
-    return schemes[user?.role] || schemes.lecture;
+    return schemes[user?.role] || schemes.student;
   }, [user?.role]);
 
   return (
