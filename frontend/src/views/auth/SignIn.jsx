@@ -35,9 +35,8 @@ const SignIn = () => {
       // Map roles to their respective dashboard routes
       const roleRoutes = {
         "super_admin": "/admin/default",
-        "admin": "/admin/default",
-        "dosen": "/dosen/default",
-        "mahasiswa": "/mahasiswa/default"
+        "lecturer": "/lecturer/default",
+        "student": "/student/default"
       };
 
       const route = roleRoutes[userData.role] || "/admin/default";

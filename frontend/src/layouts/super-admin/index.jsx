@@ -1,44 +1,63 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { useSelector, useDispatch } from "react-redux";
-import { toggleSidebar, closeSidebar, openSidebar } from "../../store/slices/authSlice";
+import { useNavigate } from 'react-router-dom';
 import Navbar from "components/navbar";
 import Sidebar from "components/sidebar";
 import Footer from "components/footer/Footer";
-import routes from "routes/routes-super-admin";
-import "../../assets/css/sidebar-layout.css";
+import routes from "../../routes/routes-super-admin.js";
+import { getMe } from "store/slices/authSlice";
+import { useDispatch, useSelector } from "react-redux";
 
-export default function SuperAdminLayout() {
-  const { pathname } = useLocation();
-  const [currentRoute, setCurrentRoute] = useState("Main Dashboard");
+export default function SuperAdmin(props) {
+  const { ...rest } = props;
+  const location = useLocation();
+  const [open, setOpen] = React.useState(true);
+  const [currentRoute, setCurrentRoute] = React.useState("Main Dashboard");
+  const { isError } = useSelector((state => state.auth));
+  const [page, setPage] = useState("");
+
+  const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { sidebarOpen } = useSelector((state) => state.auth);
 
-  // Simplified toggle function - less verbose
-  const handleSidebarToggle = () => {
-    dispatch(toggleSidebar());
-  };
-
-  // Simple handlers for open/close
-  const openSidebarHandler = () => dispatch(openSidebar());
-  const closeSidebarHandler = () => dispatch(closeSidebar());
-
-  // Ensure body class is updated when sidebar state changes
   useEffect(() => {
-    if (sidebarOpen) {
-      document.body.classList.add('sidebar-is-open');
-    } else {
-      document.body.classList.remove('sidebar-is-open');
-    }
-  }, [sidebarOpen]);
+    dispatch(getMe());
+  }, [dispatch]);
 
-  // Track route changes
+  useEffect(() => {
+    const currentPath = location.pathname.split("/").pop();
+    const currentRoute = routes.find(
+      (route) => route.layout === "/admin" && route.path === currentPath
+    );
+    if (currentRoute) {
+      setPage(currentRoute.name);
+      document.title = currentRoute.name;
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (isError) {
+      navigate("/auth/sign-in");
+    }
+  }, [isError, navigate]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      window.innerWidth < 1200 ? setOpen(false) : setOpen(true);
+    };
+    window.addEventListener("resize", handleResize);
+
+    // Cleanup listener on unmount
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
   useEffect(() => {
     getActiveRoute(routes);
-  }, [pathname]);
+  }, [location.pathname]);
 
   const getActiveRoute = (routes) => {
-    let activeRoute = "Super Admin Dashboard";
+    let activeRoute = "Main Dashboard";
     for (let i = 0; i < routes.length; i++) {
       if (
         window.location.href.indexOf(
@@ -46,6 +65,7 @@ export default function SuperAdminLayout() {
         ) !== -1
       ) {
         setCurrentRoute(routes[i].name);
+        return routes[i].name; // Return route name immediately
       }
     }
     return activeRoute;
@@ -57,7 +77,7 @@ export default function SuperAdminLayout() {
       if (
         window.location.href.indexOf(routes[i].layout + "/" + routes[i].path) !== -1
       ) {
-        return routes[i].secondary;
+        return routes[i].secondary || false;
       }
     }
     return activeNavbar;
@@ -65,54 +85,42 @@ export default function SuperAdminLayout() {
 
   const getRoutes = (routes) => {
     return routes.map((prop, key) => {
-      if (prop.layout === "/super-admin") {
+      if (prop.layout === "/admin") {
         return (
           <Route path={`/${prop.path}`} element={prop.component} key={key} />
         );
-      } else {
-        return null;
       }
+      return null;
     });
   };
+
   document.documentElement.dir = "ltr";
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-slate-900">
-      {/* Sidebar Component */}
-      <Sidebar onClose={closeSidebarHandler} />
-
-      {/* Main Content Wrapper - Dynamically adjusts width based on sidebar state */}
-      <div
-        className={`
-          main-content-wrapper content-expand-animation
-          relative flex flex-col h-full transition-all duration-300 ease-in-out
-          ${sidebarOpen ? 'w-[calc(100%-16rem)] ml-64' : 'w-full ml-0'}
-        `}
-        id="main-content-wrapper"
-      >
-        {/* Navbar Component */}
-        <Navbar
-          onOpenSidenav={handleSidebarToggle}
-          logoText={"Super Admin Portal"}
-          brandText={currentRoute}
-          secondary={getActiveNavbar(routes)}
-        />
-
-        {/* Main Content Area */}
-        <main className="flex-1 flex flex-col overflow-y-auto">
-          {/* Content Container */}
-          <div className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6">
-            <div className="w-full mx-auto transition-all duration-300">
+    <div className="flex h-full w-full">
+      <Sidebar open={open} onClose={() => setOpen(false)} />
+      <div className="h-full w-full bg-lightPrimary dark:!bg-navy-900">
+        <main
+          className={`mx-3 h-full flex-none transition-all md:pr-2 xl:ml-[313px]`}
+        >
+          <div className="h-full">
+            <Navbar
+              onOpenSidenav={() => setOpen(true)}
+              logoText="DandStore"
+              brandText={currentRoute}
+              secondary={getActiveNavbar(routes)}
+              {...rest}
+            />
+            <div className="pt-5 mx-auto mb-auto h-full min-h-[84vh] p-2 md:pr-2">
               <Routes>
                 {getRoutes(routes)}
-                <Route path="/" element={<Navigate to="/super-admin/default" replace />} />
+                <Route
+                  path="/"
+                  element={<Navigate to="/admin/default" replace />}
+                />
               </Routes>
             </div>
-          </div>
-
-          {/* Footer */}
-          <div className="w-full px-4 sm:px-6 lg:px-8 pb-6">
-            <div className="w-full mx-auto transition-all duration-300">
+            <div className="p-3">
               <Footer />
             </div>
           </div>

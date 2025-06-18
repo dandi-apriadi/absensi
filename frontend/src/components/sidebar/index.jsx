@@ -1,9 +1,9 @@
 import React, { useMemo, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from "react-redux";
-import { closeSidebar, openSidebar } from "../../store/slices/authSlice";
+import { closeSidebar, openSidebar, getMe } from "../../store/slices/authSlice";
 import { HiX } from "react-icons/hi";
 import { FaUserCircle } from "react-icons/fa";
-import Links from "./components/Links";
+import { SidebarLinks } from "./components/Links";
 
 // Route imports
 import routesAdmin from "../../routes/routes-super-admin.js";
@@ -15,19 +15,38 @@ import proposalLogo from "../../assets/img/profile/poli.png";
 
 // Validate routes to ensure they contain valid components
 const validateRoutes = (routes) => {
-  if (!Array.isArray(routes)) return [];
+  if (!Array.isArray(routes)) {
+    return [];
+  }
+
   return routes.filter(route => {
-    return route && typeof route === 'object' && (
+    if (!route || typeof route !== 'object') {
+      return false;
+    }
+
+    // Check if route has required properties
+    if (!route.name || !route.layout || !route.path) {
+      return false;
+    }
+
+    // Check if component exists and is valid
+    if (!route.component) {
+      return false;
+    }
+
+    const isValidComponent = (
       typeof route.component === 'function' ||
       typeof route.component === 'string' ||
       React.isValidElement(route.component)
     );
+
+    return isValidComponent;
   });
 };
 
 const Sidebar = ({ onClose }) => {
   const dispatch = useDispatch();
-  const { user, microPage, sidebarOpen } = useSelector((state) => state.auth);
+  const { user, microPage, sidebarOpen, isLoading } = useSelector((state) => state.auth);
   const sidebarRef = useRef(null);
   // Set sidebar open by default on desktop
   useEffect(() => {
@@ -71,6 +90,16 @@ const Sidebar = ({ onClose }) => {
       }
     }
   }, [sidebarOpen]);
+
+  // Fetch user data if not available
+  useEffect(() => {
+    if (!user) {
+      dispatch(getMe()).catch((error) => {
+        console.error("Failed to fetch user data:", error);
+      });
+    }
+  }, [dispatch, user]);
+
   // Handle sidebar close
   const handleClose = (e) => {
     if (e) {
@@ -81,9 +110,7 @@ const Sidebar = ({ onClose }) => {
     if (typeof onClose === 'function') {
       onClose();
     }
-  };
-
-  // Use useMemo to only recalculate routes when user role changes
+  };  // Use useMemo to only recalculate routes when user role changes
   const routes = useMemo(() => {
     try {
       const roleRoutes = {
@@ -92,8 +119,16 @@ const Sidebar = ({ onClose }) => {
         'student': routesStudent,
       };
 
-      const selectedRoutes = roleRoutes[user?.role] || routesStudent;
-      return validateRoutes(selectedRoutes);
+      const selectedRoutes = roleRoutes[user?.role];
+
+      // If no routes found for user role, return empty array
+      if (!selectedRoutes) {
+        return [];
+      }
+
+      const validatedRoutes = validateRoutes(selectedRoutes);
+
+      return validatedRoutes;
     } catch (error) {
       console.error("Error processing routes:", error);
       return [];
@@ -188,10 +223,15 @@ const Sidebar = ({ onClose }) => {
               <div className="space-y-2">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white capitalize truncate">
                   {microPage !== "unset" ? microPage : "Dashboard"}
-                </h2>
-                <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                  <span>Welcome back, <span className="font-semibold">{user?.fullname || "User"}</span></span>
+                </h2>                <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
+                  <span className={`w-2 h-2 rounded-full ${user ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></span>
+                  <span>
+                    {user ? (
+                      <>Welcome back, <span className="font-semibold">{user.fullname || user.name || "User"}</span></>
+                    ) : (
+                      <>Welcome, <span className="font-semibold">Guest</span></>
+                    )}
+                  </span>
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
                   <div className="flex items-center justify-between">
@@ -210,36 +250,51 @@ const Sidebar = ({ onClose }) => {
                   </div>
                 </div>
               </div>
-            </div>
-
-            {/* Clean User Profile */}
+            </div>            {/* Clean User Profile */}
             <div className="px-4 py-3">
-              <div className={`
-                rounded-lg ${roleColorScheme.bg} dark:bg-slate-800/50
-                p-3 border ${roleColorScheme.border} dark:border-slate-700
-                shadow-sm
-              `}>
-                <div className="flex items-center space-x-2">
-                  <div className={`w-8 h-8 rounded-md bg-gradient-to-r ${roleColorScheme.primary} p-0.5 shadow-md`}>
-                    <div className="w-full h-full bg-white dark:bg-slate-800 rounded-sm flex items-center justify-center">
-                      <FaUserCircle className="h-4 w-4 text-gray-400" />
+              {isLoading ? (
+                <div className="rounded-lg bg-gray-50 dark:bg-slate-800/50 p-3 border border-gray-200 dark:border-slate-700 shadow-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 rounded-md bg-gray-200 dark:bg-slate-700 animate-pulse"></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded animate-pulse mb-1"></div>
+                      <div className="h-2 bg-gray-200 dark:bg-slate-700 rounded animate-pulse w-16"></div>
                     </div>
                   </div>
+                </div>
+              ) : (
+                <div className={`
+                  rounded-lg ${roleColorScheme.bg} dark:bg-slate-800/50
+                  p-3 border ${roleColorScheme.border} dark:border-slate-700
+                  shadow-sm
+                `}>
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-8 h-8 rounded-md bg-gradient-to-r ${roleColorScheme.primary} p-0.5 shadow-md`}>
+                      <div className="w-full h-full bg-white dark:bg-slate-800 rounded-sm flex items-center justify-center">
+                        <FaUserCircle className="h-4 w-4 text-gray-400" />
+                      </div>
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 dark:text-white text-xs truncate">
-                      {user?.fullname || 'User Name'}
-                    </h3>
-                    <span className={`
-                      inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-medium mt-0.5
-                      bg-gradient-to-r ${roleColorScheme.primary} text-white shadow-sm
-                    `}>
-                      <div className="w-1 h-1 bg-white/80 rounded-full mr-1"></div>
-                      {user?.role || 'User'}
-                    </span>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 dark:text-white text-xs truncate">
+                        {user?.fullname || user?.name || 'User Name'}
+                      </h3>
+                      <span className={`
+                        inline-flex items-center px-1.5 py-0.5 rounded-md text-xs font-medium mt-0.5
+                        bg-gradient-to-r ${roleColorScheme.primary} text-white shadow-sm
+                      `}>
+                        <div className="w-1 h-1 bg-white/80 rounded-full mr-1"></div>
+                        {user?.role || 'Guest'}
+                      </span>
+                      {user?.email && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-1">
+                          {user.email}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Clean Navigation Header */}
@@ -247,13 +302,17 @@ const Sidebar = ({ onClose }) => {
               <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
                 Navigation
               </h2>
-            </div>
-
-            {/* Clean Navigation Links */}
+            </div>            {/* Clean Navigation Links */}
             <div className="flex-1 px-2 pb-4 overflow-hidden">
               <div className="h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent pr-2">
-                {Array.isArray(routes) && routes.length > 0 ? (
-                  <Links routes={routes} />
+                {isLoading ? (
+                  <div className="space-y-2">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="h-12 bg-gray-100 dark:bg-slate-800 rounded-lg animate-pulse"></div>
+                    ))}
+                  </div>
+                ) : Array.isArray(routes) && routes.length > 0 ? (
+                  <SidebarLinks routes={routes} />
                 ) : (
                   <div className="text-center py-6 px-3">
                     <div className="w-12 h-12 bg-gray-100 dark:bg-slate-800 rounded-lg flex items-center justify-center mx-auto mb-3 shadow-sm">
@@ -261,8 +320,11 @@ const Sidebar = ({ onClose }) => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6" />
                       </svg>
                     </div>
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">No navigation available</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">Check your permissions</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                      {!user ? 'Please login to access navigation' : 'No navigation available'}
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {!user ? 'Authentication required' : 'Check your permissions'}                    </p>
                   </div>
                 )}
               </div>

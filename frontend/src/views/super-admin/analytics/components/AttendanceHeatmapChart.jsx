@@ -1,11 +1,14 @@
 import React from "react";
 
-const AttendanceHeatmapChart = () => {
-    const days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-    const timeSlots = ["08:00", "09:30", "11:00", "13:00", "14:30", "16:00"];
+const AttendanceHeatmapChart = ({ data: propData = null }) => {
+    const defaultDays = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+    const defaultTimeSlots = ["08:00", "09:30", "11:00", "13:00", "14:30", "16:00"];
 
-    // Generate dummy data for the heatmap
-    // Values represent attendance percentage (0-100)
+    // Use prop data if available, otherwise generate dummy data
+    const days = propData?.labels || defaultDays;
+    const timeSlots = propData?.datasets?.map(d => d.time) || defaultTimeSlots;
+
+    // Generate dummy data for the heatmap if no prop data
     const generateData = () => {
         const data = [];
         for (let day = 0; day < days.length; day++) {
@@ -20,7 +23,12 @@ const AttendanceHeatmapChart = () => {
         return data;
     };
 
-    const attendanceData = generateData();
+    const attendanceData = propData ?
+        timeSlots.map((_, slotIndex) =>
+            days.map((_, dayIndex) =>
+                propData.datasets[slotIndex]?.data[dayIndex] || 0
+            )
+        ) : generateData();
 
     // Function to determine color based on value
     const getColor = (value) => {
@@ -54,16 +62,20 @@ const AttendanceHeatmapChart = () => {
                         <tr key={dayIndex}>
                             <td className="px-2 py-2 whitespace-nowrap text-sm font-medium text-gray-800">
                                 {day}
-                            </td>
-                            {attendanceData[dayIndex].map((value, slotIndex) => (
-                                <td key={slotIndex} className="px-2 py-2 whitespace-nowrap text-center">
-                                    <div
-                                        className={`w-16 h-12 flex items-center justify-center rounded-md ${getColor(value)} ${getTextColor(value)}`}
-                                    >
-                                        <span className="font-medium">{value}%</span>
-                                    </div>
-                                </td>
-                            ))}
+                            </td>                            {timeSlots.map((_, slotIndex) => {
+                                const value = propData ?
+                                    (propData.datasets.find(d => d.time === timeSlots[slotIndex])?.data[dayIndex] || 0) :
+                                    attendanceData[dayIndex][slotIndex];
+                                return (
+                                    <td key={slotIndex} className="px-2 py-2 whitespace-nowrap text-center">
+                                        <div
+                                            className={`w-16 h-12 flex items-center justify-center rounded-md ${getColor(value)} ${getTextColor(value)}`}
+                                        >
+                                            <span className="font-medium">{value}%</span>
+                                        </div>
+                                    </td>
+                                );
+                            })}
                         </tr>
                     ))}
                 </tbody>

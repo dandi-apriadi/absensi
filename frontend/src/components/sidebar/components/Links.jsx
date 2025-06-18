@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import DashIcon from "components/icons/DashIcon";
-import { setMicroPage } from "store/slices/authSlice";
+import DashIcon from "../../icons/DashIcon";
+import { setMicroPage } from "../../../store/slices/authSlice";
 import { useDispatch } from "react-redux";
 
 export function SidebarLinks(props) {
@@ -203,7 +203,6 @@ export function SidebarLinks(props) {
       return elements;
     });
   };
-
   return <div className="space-y-0.5">{createLinks(routes)}</div>;
 }
 

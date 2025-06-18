@@ -1,27 +1,63 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useNavigate } from 'react-router-dom';
 import Navbar from "components/navbar";
 import Sidebar from "components/sidebar";
 import Footer from "components/footer/Footer";
-import routes from "routes/routes-student";
+import routes from "../../routes/routes-student.js";
+import { getMe } from "store/slices/authSlice";
+import { useDispatch, useSelector } from "react-redux";
 
-export default function StudentLayout() {
-  const { pathname } = useLocation();
-  const [open, setOpen] = useState(true);
-  const [currentRoute, setCurrentRoute] = useState("Main Dashboard");
+export default function Student(props) {
+  const { ...rest } = props;
+  const location = useLocation();
+  const [open, setOpen] = React.useState(true);
+  const [currentRoute, setCurrentRoute] = React.useState("Main Dashboard");
+  const { isError } = useSelector((state => state.auth));
+  const [page, setPage] = useState("");
+
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
 
   useEffect(() => {
-    window.addEventListener("resize", () => 
-      window.innerWidth < 1200 ? setOpen(false) : setOpen(true)
+    dispatch(getMe());
+  }, [dispatch]);
+
+  useEffect(() => {
+    const currentPath = location.pathname.split("/").pop();
+    const currentRoute = routes.find(
+      (route) => route.layout === "/student" && route.path === currentPath
     );
+    if (currentRoute) {
+      setPage(currentRoute.name);
+      document.title = currentRoute.name;
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (isError) {
+      navigate("/auth/sign-in");
+    }
+  }, [isError, navigate]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      window.innerWidth < 1200 ? setOpen(false) : setOpen(true);
+    };
+    window.addEventListener("resize", handleResize);
+
+    // Cleanup listener on unmount
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
   }, []);
 
   useEffect(() => {
     getActiveRoute(routes);
-  }, [pathname]);
+  }, [location.pathname]);
 
   const getActiveRoute = (routes) => {
-    let activeRoute = "Student Dashboard";
+    let activeRoute = "Main Dashboard";
     for (let i = 0; i < routes.length; i++) {
       if (
         window.location.href.indexOf(
@@ -29,6 +65,7 @@ export default function StudentLayout() {
         ) !== -1
       ) {
         setCurrentRoute(routes[i].name);
+        return routes[i].name; // Return route name immediately
       }
     }
     return activeRoute;
@@ -40,7 +77,7 @@ export default function StudentLayout() {
       if (
         window.location.href.indexOf(routes[i].layout + "/" + routes[i].path) !== -1
       ) {
-        return routes[i].secondary;
+        return routes[i].secondary || false;
       }
     }
     return activeNavbar;
@@ -52,9 +89,8 @@ export default function StudentLayout() {
         return (
           <Route path={`/${prop.path}`} element={prop.component} key={key} />
         );
-      } else {
-        return null;
       }
+      return null;
     });
   };
 
@@ -62,30 +98,26 @@ export default function StudentLayout() {
 
   return (
     <div className="flex h-full w-full">
-      <Sidebar 
-        open={open} 
-        onClose={() => setOpen(false)} 
-        routes={routes} 
-        variant="student"
-      />
-      
-      {/* Main Content */}
-      <div className="h-full w-full bg-lightPrimary dark:bg-navy-900">
-        {/* Main */}
-        <main className={`mx-[12px] h-full flex-none transition-all md:pr-2 xl:ml-[313px]`}>
-          {/* Routes */}
+      <Sidebar open={open} onClose={() => setOpen(false)} />
+      <div className="h-full w-full bg-lightPrimary dark:!bg-navy-900">
+        <main
+          className={`mx-3 h-full flex-none transition-all md:pr-2 xl:ml-[313px]`}
+        >
           <div className="h-full">
             <Navbar
               onOpenSidenav={() => setOpen(true)}
-              logoText={"Student Portal"}
+              logoText="DandStore"
               brandText={currentRoute}
               secondary={getActiveNavbar(routes)}
-              {...{ open }}
+              {...rest}
             />
-            <div className="pt-5s mx-auto mb-auto h-full min-h-[84vh] p-2 md:pr-2">
+            <div className="pt-5 mx-auto mb-auto h-full min-h-[84vh] p-2 md:pr-2">
               <Routes>
                 {getRoutes(routes)}
-                <Route path="/" element={<Navigate to="/student/default" replace />} />
+                <Route
+                  path="/"
+                  element={<Navigate to="/student/default" replace />}
+                />
               </Routes>
             </div>
             <div className="p-3">

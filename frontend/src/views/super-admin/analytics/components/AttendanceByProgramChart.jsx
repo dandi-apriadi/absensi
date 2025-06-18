@@ -4,13 +4,26 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-const AttendanceByProgramChart = () => {
-    // Dummy data for attendance by program
-    const data = {
+const AttendanceByProgramChart = ({ data: propData = [] }) => {
+    // Use prop data if available, otherwise fallback to dummy data
+    const fallbackData = {
         labels: ['Teknik Informatika', 'Sistem Informasi', 'Ilmu Komputer', 'Teknik Elektro', 'Teknik Telekomunikasi'],
+        values: [92, 85, 88, 82, 79]
+    };
+
+    const chartLabels = propData.length > 0
+        ? propData.map(item => item.program)
+        : fallbackData.labels;
+
+    const chartValues = propData.length > 0
+        ? propData.map(item => item.attendance)
+        : fallbackData.values;
+
+    const data = {
+        labels: chartLabels,
         datasets: [
             {
-                data: [92, 85, 88, 82, 79],
+                data: chartValues,
                 backgroundColor: [
                     'rgba(59, 130, 246, 0.8)', // blue
                     'rgba(16, 185, 129, 0.8)', // green

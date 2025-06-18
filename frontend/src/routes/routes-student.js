@@ -136,15 +136,6 @@ const routes = [
     component: <LeaveRequestForm />,
   },
   {
-    name: "Form Pengajuan",
-    layout: "/student",
-    parentPath: "leave-requests",
-    path: "submit-request",
-    icon: <MdSick className="h-6 w-6 ml-10" />,
-    component: <LeaveRequestForm />,
-    secondary: true,
-  },
-  {
     name: "Riwayat Pengajuan",
     layout: "/student",
     parentPath: "leave-requests",

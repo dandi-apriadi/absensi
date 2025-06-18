@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { MdSearch, MdAdd, MdFileUpload, MdFileDownload, MdFilterList, MdEdit, MdDelete, MdFace, MdCheckCircle, MdError, MdSchool } from "react-icons/md";
+import { MdSearch, MdAdd, MdFileUpload, MdFileDownload, MdFilterList, MdEdit, MdDelete, MdFace, MdCheckCircle, MdError, MdSchool, MdClose, MdSave, MdCancel } from "react-icons/md";
 import AOS from "aos";
 import "aos/dist/aos.css";
 
@@ -99,6 +99,18 @@ const StudentManagement = () => {
     const [selectedDataset, setSelectedDataset] = useState("Semua");
     const [filteredStudents, setFilteredStudents] = useState(dummyStudents);
 
+    // Modal states
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [selectedStudent, setSelectedStudent] = useState(null);
+    const [editFormData, setEditFormData] = useState({
+        nim: "",
+        name: "",
+        program: "",
+        year: "",
+        status: "",
+        faceDataset: false
+    });
+
     useEffect(() => {
         AOS.init({
             duration: 800,
@@ -136,10 +148,64 @@ const StudentManagement = () => {
         if (selectedDataset !== "Semua") {
             const hasDataset = selectedDataset === "Ada Dataset";
             result = result.filter(student => student.faceDataset === hasDataset);
-        }
-
-        setFilteredStudents(result);
+        } setFilteredStudents(result);
     }, [searchTerm, selectedProgram, selectedYear, selectedStatus, selectedDataset]);
+
+    // Modal functions
+    const openEditModal = (student) => {
+        setSelectedStudent(student);
+        setEditFormData({
+            nim: student.nim,
+            name: student.name,
+            program: student.program,
+            year: student.year,
+            status: student.status,
+            faceDataset: student.faceDataset
+        });
+        setIsEditModalOpen(true);
+    };
+
+    const closeEditModal = () => {
+        setIsEditModalOpen(false);
+        setSelectedStudent(null);
+        setEditFormData({
+            nim: "",
+            name: "",
+            program: "",
+            year: "",
+            status: "",
+            faceDataset: false
+        });
+    };
+
+    const handleInputChange = (e) => {
+        const { name, value, type, checked } = e.target;
+        setEditFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? checked : value
+        }));
+    };
+
+    const handleSaveStudent = () => {
+        // Here you would typically make an API call to update the student
+        console.log('Saving student:', editFormData);
+
+        // For now, we'll just update the local state
+        const updatedStudents = dummyStudents.map(student =>
+            student.id === selectedStudent.id
+                ? { ...student, ...editFormData }
+                : student
+        );
+
+        // Update filtered students to reflect changes
+        setFilteredStudents(updatedStudents);
+
+        // Close modal
+        closeEditModal();
+
+        // Show success message (you can implement toast notification here)
+        alert('Data mahasiswa berhasil diperbarui!');
+    };
 
     return (
         <div className="p-4 md:p-8">
@@ -263,16 +329,19 @@ const StudentManagement = () => {
                                             </span>
                                         )}
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.lastAttendance}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                                        <button className="text-blue-600 hover:text-blue-900">
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.lastAttendance}</td>                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                                        <button
+                                            className="text-blue-600 hover:text-blue-900 transition-colors duration-200"
+                                            onClick={() => openEditModal(student)}
+                                            title="Edit Mahasiswa"
+                                        >
                                             <MdEdit className="h-5 w-5" />
                                         </button>
-                                        <button className="text-red-600 hover:text-red-900">
+                                        <button className="text-red-600 hover:text-red-900 transition-colors duration-200" title="Hapus Mahasiswa">
                                             <MdDelete className="h-5 w-5" />
                                         </button>
                                         {!student.faceDataset && (
-                                            <button className="text-green-600 hover:text-green-900">
+                                            <button className="text-green-600 hover:text-green-900 transition-colors duration-200" title="Upload Dataset Wajah">
                                                 <MdFace className="h-5 w-5" />
                                             </button>
                                         )}
@@ -321,15 +390,202 @@ const StudentManagement = () => {
                         </div>
                     </div>
                 </div>
-            </div>
-
-            {/* Under Development Message */}
+            </div>            {/* Under Development Message */}
             <div className="bg-white rounded-xl shadow-md p-6" data-aos="fade-up">
                 <div className="flex items-center justify-center h-40 flex-col">
                     <MdSchool className="h-16 w-16 text-blue-500 mb-4" />
                     <h2 className="text-xl text-gray-600">Manajemen mahasiswa sedang dalam pengembangan</h2>
                 </div>
             </div>
+
+            {/* Edit Student Modal */}
+            {isEditModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-800">Edit Data Mahasiswa</h2>
+                                <p className="text-gray-600 mt-1">Perbarui informasi mahasiswa</p>
+                            </div>
+                            <button
+                                onClick={closeEditModal}
+                                className="p-2 hover:bg-gray-100 rounded-full transition-colors duration-200"
+                            >
+                                <MdClose className="h-6 w-6 text-gray-600" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6">
+                            <form className="space-y-6">
+                                {/* NIM Field */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        NIM <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="nim"
+                                        value={editFormData.nim}
+                                        onChange={handleInputChange}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
+                                        placeholder="Masukkan NIM mahasiswa"
+                                        required
+                                    />
+                                </div>
+
+                                {/* Name Field */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Nama Lengkap <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        value={editFormData.name}
+                                        onChange={handleInputChange}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
+                                        placeholder="Masukkan nama lengkap"
+                                        required
+                                    />
+                                </div>
+
+                                {/* Program and Year Row */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Program Field */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Program Studi <span className="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            name="program"
+                                            value={editFormData.program}
+                                            onChange={handleInputChange}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
+                                            required
+                                        >
+                                            <option value="">Pilih Program Studi</option>
+                                            <option value="Teknik Informatika">Teknik Informatika</option>
+                                            <option value="Sistem Informasi">Sistem Informasi</option>
+                                            <option value="Manajemen Informatika">Manajemen Informatika</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Year Field */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Angkatan <span className="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            name="year"
+                                            value={editFormData.year}
+                                            onChange={handleInputChange}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
+                                            required
+                                        >
+                                            <option value="">Pilih Angkatan</option>
+                                            <option value="2020">2020</option>
+                                            <option value="2021">2021</option>
+                                            <option value="2022">2022</option>
+                                            <option value="2023">2023</option>
+                                            <option value="2024">2024</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Status Field */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Status <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        name="status"
+                                        value={editFormData.status}
+                                        onChange={handleInputChange}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
+                                        required
+                                    >
+                                        <option value="">Pilih Status</option>
+                                        <option value="Aktif">Aktif</option>
+                                        <option value="Non-Aktif">Non-Aktif</option>
+                                        <option value="Cuti">Cuti</option>
+                                        <option value="Lulus">Lulus</option>
+                                    </select>
+                                </div>
+
+                                {/* Face Dataset Checkbox */}
+                                <div className="bg-gray-50 p-4 rounded-lg">
+                                    <div className="flex items-start">
+                                        <div className="flex items-center h-5">
+                                            <input
+                                                type="checkbox"
+                                                name="faceDataset"
+                                                checked={editFormData.faceDataset}
+                                                onChange={handleInputChange}
+                                                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                                            />
+                                        </div>
+                                        <div className="ml-3 text-sm">
+                                            <label className="font-medium text-gray-700">
+                                                Dataset Wajah Tersedia
+                                            </label>
+                                            <p className="text-gray-500">
+                                                Centang jika mahasiswa sudah memiliki dataset wajah untuk sistem absensi
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Current Student Info */}
+                                {selectedStudent && (
+                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                        <h4 className="font-medium text-blue-800 mb-2">Informasi Saat Ini:</h4>
+                                        <div className="grid grid-cols-2 gap-4 text-sm">
+                                            <div>
+                                                <span className="text-blue-600">NIM:</span>
+                                                <span className="ml-2 text-blue-800">{selectedStudent.nim}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-blue-600">Nama:</span>
+                                                <span className="ml-2 text-blue-800">{selectedStudent.name}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-blue-600">Program:</span>
+                                                <span className="ml-2 text-blue-800">{selectedStudent.program}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-blue-600">Status:</span>
+                                                <span className="ml-2 text-blue-800">{selectedStudent.status}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </form>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex items-center justify-end gap-4 p-6 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
+                            <button
+                                type="button"
+                                onClick={closeEditModal}
+                                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-all duration-300 flex items-center gap-2"
+                            >
+                                <MdCancel className="h-4 w-4" />
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveStudent}
+                                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-300 flex items-center gap-2 shadow-lg hover:shadow-xl"
+                            >
+                                <MdSave className="h-4 w-4" />
+                                Simpan Perubahan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

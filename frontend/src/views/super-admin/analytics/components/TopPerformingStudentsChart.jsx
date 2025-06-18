@@ -19,14 +19,27 @@ ChartJS.register(
     Legend
 );
 
-const TopPerformingStudentsChart = () => {
-    // Dummy data for top performing students
-    const data = {
+const TopPerformingStudentsChart = ({ data: propData = [] }) => {
+    // Use prop data if available, otherwise fallback to dummy data
+    const fallbackData = {
         labels: ["Ahmad F.", "Siti N.", "Budi S.", "Dewi L.", "Rizki M.", "Indah P.", "Andi S."],
+        values: [100, 98.5, 98.2, 97.8, 97.5, 97.0, 96.8]
+    };
+
+    const chartLabels = propData.length > 0
+        ? propData.map(student => student.name.split(' ').slice(0, 2).join(' '))
+        : fallbackData.labels;
+
+    const chartValues = propData.length > 0
+        ? propData.map(student => student.attendance)
+        : fallbackData.values;
+
+    const data = {
+        labels: chartLabels,
         datasets: [
             {
                 label: "% Kehadiran",
-                data: [100, 98.5, 98.2, 97.8, 97.5, 97.0, 96.8],
+                data: chartValues,
                 backgroundColor: "rgba(59, 130, 246, 0.8)",
                 borderColor: "rgba(59, 130, 246, 1)",
                 borderWidth: 1,

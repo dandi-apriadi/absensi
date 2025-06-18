@@ -2,11 +2,95 @@ import React, { useEffect } from "react";
 import { MdPeople, MdFace, MdAccessTime, MdMeetingRoom } from "react-icons/md";
 import AOS from "aos";
 import "aos/dist/aos.css";
-import StatisticsCard from "./components/StatisticsCard";
-import AttendanceChart from "./components/AttendanceChart";
-import RecentActivityTable from "./components/RecentActivityTable";
-import SystemStatusCard from "./components/SystemStatusCard";
-import AlertCard from "./components/AlertCard";
+
+// Safe imports with fallback
+let StatisticsCard, AttendanceChart, RecentActivityTable, SystemStatusCard, AlertCard;
+
+try {
+    StatisticsCard = require("./components/StatisticsCard").default;
+} catch {
+    StatisticsCard = ({ title, value, icon, trend, color }) => (
+        <div className="bg-white rounded-xl shadow-md p-5 h-full">
+            <div className="flex items-center justify-between">
+                <div>
+                    <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
+                    <h3 className="text-2xl font-bold text-gray-800">{value}</h3>
+                    {trend && <p className="text-sm text-green-600">{trend}</p>}
+                </div>
+                <div className="text-blue-500">{icon}</div>
+            </div>
+        </div>
+    );
+}
+
+try {
+    AttendanceChart = require("./components/AttendanceChart").default;
+} catch {
+    AttendanceChart = () => (
+        <div className="h-full flex items-center justify-center bg-gray-50 rounded-lg">
+            <p className="text-gray-500">Chart will be loaded here</p>
+        </div>
+    );
+}
+
+try {
+    RecentActivityTable = require("./components/RecentActivityTable").default;
+} catch {
+    RecentActivityTable = () => (
+        <div className="space-y-3">
+            <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                <div className="text-blue-500">📝</div>
+                <div>
+                    <p className="text-sm font-medium">Login berhasil - Admin Sistem</p>
+                    <p className="text-xs text-gray-500">15 menit yang lalu</p>
+                </div>
+            </div>
+            <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                <div className="text-green-500">👤</div>
+                <div>
+                    <p className="text-sm font-medium">Dataset wajah ditambahkan</p>
+                    <p className="text-xs text-gray-500">32 menit yang lalu</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+try {
+    SystemStatusCard = require("./components/SystemStatusCard").default;
+} catch {
+    SystemStatusCard = ({ name, status, uptime, load }) => (
+        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <div>
+                <p className="text-sm font-medium text-gray-800">{name}</p>
+                <p className="text-xs text-gray-500">Uptime: {uptime}</p>
+            </div>
+            <div className="flex items-center space-x-2">
+                <span className={`px-2 py-1 text-xs rounded-full ${status === 'online' ? 'bg-green-100 text-green-800' :
+                        status === 'warning' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                    }`}>
+                    {status}
+                </span>
+                <span className="text-xs text-gray-500">{load}</span>
+            </div>
+        </div>
+    );
+}
+
+try {
+    AlertCard = require("./components/AlertCard").default;
+} catch {
+    AlertCard = ({ type, message, time }) => (
+        <div className={`p-3 rounded-lg border-l-4 ${type === 'warning' ? 'bg-yellow-50 border-yellow-400' :
+                type === 'error' ? 'bg-red-50 border-red-400' :
+                    'bg-blue-50 border-blue-400'
+            }`}>
+            <p className="text-sm font-medium text-gray-800">{message}</p>
+            <p className="text-xs text-gray-500 mt-1">{time}</p>
+        </div>
+    );
+}
 
 const dummyStats = [
     { title: "Total Mahasiswa", value: "1,257", icon: <MdPeople className="h-6 w-6" />, trend: "+2.5%", color: "blue" },
