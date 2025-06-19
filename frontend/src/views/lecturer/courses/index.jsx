@@ -1,19 +1,18 @@
 import React, { useEffect } from "react";
 import AOS from "aos";
 import "aos/dist/aos.css";
-import { Link } from "react-router-dom";
-import Card from "components/card";
-import {
-    MdSchool,
-    MdPeople,
-    MdAccessTime,
-    MdCalendarToday,
-    MdAssignment,
-    MdArrowForward,
-} from "react-icons/md";
 
-// Dummy Data
-const courses = [
+// Import modular components
+import CourseCard from "./components/CourseCard";
+import StatisticsCard from "./components/StatisticsCard";
+import FilterSection from "./components/FilterSection";
+import Sidebar from "./components/Sidebar";
+import CourseDetailView from "./components/CourseDetailView";
+import TakeAttendanceView from "./components/TakeAttendanceView";
+import { useCourseManagement } from "./hooks/useCourseManagement";
+
+// Sample data - in real app, this would come from API
+const coursesData = [
     {
         id: 1,
         code: "CS-101",
@@ -26,6 +25,10 @@ const courses = [
         time: "08:00 - 09:40",
         room: "Lab 301",
         color: "blue",
+        averageAttendance: 92,
+        trend: "up",
+        lastSessionDate: "2023-10-15",
+        status: "active"
     },
     {
         id: 2,
@@ -39,6 +42,10 @@ const courses = [
         time: "10:00 - 11:40",
         room: "Lab 302",
         color: "green",
+        averageAttendance: 88,
+        trend: "up",
+        lastSessionDate: "2023-10-14",
+        status: "active"
     },
     {
         id: 3,
@@ -52,6 +59,10 @@ const courses = [
         time: "13:00 - 14:40",
         room: "Lab 303",
         color: "purple",
+        averageAttendance: 78,
+        trend: "down",
+        lastSessionDate: "2023-10-13",
+        status: "attention"
     },
     {
         id: 4,
@@ -65,10 +76,57 @@ const courses = [
         time: "15:00 - 16:40",
         room: "Lab 304",
         color: "orange",
+        averageAttendance: 95,
+        trend: "up",
+        lastSessionDate: "2023-10-12",
+        status: "excellent"
     },
 ];
 
+const recentActivitiesData = [
+    {
+        id: 1,
+        type: "attendance",
+        course: "CS-101",
+        message: "Absensi pertemuan ke-8 selesai",
+        time: "2 jam yang lalu",
+        color: "green"
+    },
+    {
+        id: 2,
+        type: "alert",
+        course: "CS-103",
+        message: "Kehadiran rendah terdeteksi (78%)",
+        time: "1 hari yang lalu",
+        color: "yellow"
+    },
+    {
+        id: 3,
+        type: "schedule",
+        course: "CS-102",
+        message: "Jadwal perkuliahan besok",
+        time: "2 hari yang lalu",
+        color: "blue"
+    }
+];
+
 const CourseManagement = () => {
+    const {
+        activeFilter,
+        searchTerm,
+        sortBy,
+        filteredCourses,
+        currentView,
+        selectedCourse,
+        overallStats,
+        setActiveFilter,
+        setSearchTerm,
+        setSortBy,
+        handleTakeAttendance,
+        handleViewDetail,
+        handleBackToList
+    } = useCourseManagement(coursesData);
+
     useEffect(() => {
         AOS.init({
             duration: 800,
@@ -77,119 +135,125 @@ const CourseManagement = () => {
         });
     }, []);
 
-    const getColorClass = (color) => {
-        const colors = {
-            blue: {
-                bg: "bg-blue-100",
-                text: "text-blue-600",
-                border: "border-blue-200",
-            },
-            green: {
-                bg: "bg-green-100",
-                text: "text-green-600",
-                border: "border-green-200",
-            },
-            purple: {
-                bg: "bg-purple-100",
-                text: "text-purple-600",
-                border: "border-purple-200",
-            },
-            orange: {
-                bg: "bg-orange-100",
-                text: "text-orange-600",
-                border: "border-orange-200",
-            },
-        };
+    // Render different views based on currentView state
+    const renderCurrentView = () => {
+        switch (currentView) {
+            case "detail":
+                return (
+                    <CourseDetailView
+                        course={selectedCourse}
+                        onBack={handleBackToList}
+                    />
+                );
+            case "attendance":
+                return (
+                    <TakeAttendanceView
+                        course={selectedCourse}
+                        onBack={handleBackToList}
+                    />
+                );
+            default:
+                return (
+                    <div className="mt-3">
+                        {/* Header */}
+                        <div className="mb-5 flex justify-between items-start" data-aos="fade-down">
+                            <div>
+                                <h1 className="text-3xl font-bold text-navy-700 dark:text-white">
+                                    Manajemen Mata Kuliah
+                                </h1>
+                                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                                    Kelola mata kuliah dan pantau kehadiran mahasiswa
+                                </p>
+                            </div>
+                        </div>
 
-        return colors[color] || colors.blue;
+                        {/* Statistics Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+                            <StatisticsCard
+                                title="Total Mata Kuliah"
+                                value={overallStats.totalCourses}
+                                icon="courses"
+                                color="blue"
+                                delay="100"
+                            />
+                            <StatisticsCard
+                                title="Total Mahasiswa"
+                                value={overallStats.totalStudents}
+                                icon="students"
+                                color="green"
+                                delay="200"
+                            />
+                            <StatisticsCard
+                                title="Rata-rata Kehadiran"
+                                value={`${overallStats.averageAttendance}%`}
+                                icon="attendance"
+                                color="purple"
+                                trend={overallStats.averageAttendance >= 80 ? "up" : "down"}
+                                delay="300"
+                            />
+                            <StatisticsCard
+                                title="Perlu Perhatian"
+                                value={overallStats.needsAttention}
+                                icon="warning"
+                                color="orange"
+                                delay="400"
+                            />
+                        </div>
+
+                        {/* Main Content */}
+                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                            {/* Courses Section */}
+                            <div className="lg:col-span-3 space-y-6">
+                                {/* Filter Section */}
+                                <FilterSection
+                                    activeFilter={activeFilter}
+                                    searchTerm={searchTerm}
+                                    sortBy={sortBy}
+                                    onFilterChange={setActiveFilter}
+                                    onSearchChange={setSearchTerm}
+                                    onSortChange={setSortBy}
+                                />
+
+                                {/* Course Grid */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {filteredCourses.map((course, index) => (
+                                        <CourseCard
+                                            key={course.id}
+                                            course={course}
+                                            index={index}
+                                            onTakeAttendance={() => handleTakeAttendance(course)}
+                                            onViewDetail={() => handleViewDetail(course)}
+                                        />
+                                    ))}
+                                </div>
+
+                                {filteredCourses.length === 0 && (
+                                    <div className="text-center py-12" data-aos="fade-up">
+                                        <div className="text-gray-400 text-6xl mb-4">📚</div>
+                                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                            Tidak ada mata kuliah ditemukan
+                                        </h3>
+                                        <p className="text-gray-500">
+                                            Coba ubah filter atau kata kunci pencarian
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Sidebar */}
+                            <div className="lg:col-span-1">
+                                <Sidebar
+                                    recentActivities={recentActivitiesData}
+                                    upcomingClasses={overallStats.upcomingClasses}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                );
+        }
     };
 
-    return (
-        <div className="mt-3">
-            <div className="mb-5" data-aos="fade-down">
-                <h1 className="text-3xl font-bold text-navy-700 dark:text-white">
-                    Manajemen Mata Kuliah
-                </h1>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    Kelola semua mata kuliah yang Anda ajarkan
-                </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                {courses.map((course, index) => {
-                    const colorClass = getColorClass(course.color);
-
-                    return (
-                        <Card
-                            key={course.id}
-                            extra={`p-4 hover:border-${course.color}-300 hover:shadow-md transition-all duration-300`}
-                            data-aos="fade-up"
-                            data-aos-delay={index * 100}
-                        >
-                            <div className="flex items-center justify-between mb-3">
-                                <div
-                                    className={`text-xs font-semibold py-1 px-3 rounded-full ${colorClass.bg} ${colorClass.text} ${colorClass.border} border`}
-                                >
-                                    {course.code}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                    {course.semester}
-                                </div>
-                            </div>
-
-                            <h3 className="text-xl font-bold text-navy-700 dark:text-white mb-3">
-                                {course.name}
-                            </h3>
-
-                            <div className="flex flex-col space-y-2 mb-4">
-                                <div className="flex items-center text-gray-600">
-                                    <MdSchool className="mr-2" />
-                                    <span className="text-sm">{course.students} Mahasiswa</span>
-                                </div>
-                                <div className="flex items-center text-gray-600">
-                                    <MdCalendarToday className="mr-2" />
-                                    <span className="text-sm">{course.day}, {course.time}</span>
-                                </div>
-                                <div className="flex items-center text-gray-600">
-                                    <MdAccessTime className="mr-2" />
-                                    <span className="text-sm">Pertemuan {course.completedSessions} dari {course.sessions}</span>
-                                </div>
-                            </div>
-
-                            <div className="mb-4">
-                                <div className="flex justify-between text-xs text-gray-600 mb-1">
-                                    <span>Progress</span>
-                                    <span>{Math.round((course.completedSessions / course.sessions) * 100)}%</span>
-                                </div>
-                                <div className="h-2 w-full bg-gray-200 rounded-full">
-                                    <div
-                                        className={`h-2 rounded-full bg-${course.color}-500`}
-                                        style={{ width: `${(course.completedSessions / course.sessions) * 100}%` }}
-                                    ></div>
-                                </div>
-                            </div>
-
-                            <div className="flex space-x-2">
-                                <Link
-                                    to={`/lecturer/attendance/take-attendance?course=${course.id}`}
-                                    className="flex-1 py-2 px-4 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors text-center"
-                                >
-                                    Ambil Absensi
-                                </Link>
-
-                                <Link
-                                    to={`/lecturer/courses/course-details?id=${course.id}`}
-                                    className="flex-1 py-2 px-4 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors text-center"
-                                >
-                                    Detail
-                                </Link>
-                            </div>
-                        </Card>
-                    );
-                })}
-            </div>
-        </div>
-    );
+    return renderCurrentView();
 };
 
 export default CourseManagement;

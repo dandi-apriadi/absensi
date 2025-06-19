@@ -1,0 +1,1132 @@
+// ===============================================
+// DATABASE STRUCTURE FOR ATTENDANCE MANAGEMENT SYSTEM
+// Struktur Database untuk Sistem Manajemen Absensi
+// Generated based on routes analysis for all user roles
+// ===============================================
+
+// ===============================================
+// 1. USERS TABLE - Tabel Pengguna Utama
+// ===============================================
+const users = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  user_id: {
+    type: 'VARCHAR(20)',
+    unique: true,
+    allowNull: false,
+    comment: 'NIM untuk student, NIP untuk lecturer, Admin ID untuk super-admin'
+  },
+  email: {
+    type: 'VARCHAR(100)',
+    unique: true,
+    allowNull: false
+  },
+  password: {
+    type: 'VARCHAR(255)',
+    allowNull: false
+  },
+  full_name: {
+    type: 'VARCHAR(100)',
+    allowNull: false
+  },
+  role: {
+    type: 'ENUM',
+    values: ['student', 'lecturer', 'super-admin'],
+    allowNull: false
+  },
+  status: {
+    type: 'ENUM',
+    values: ['active', 'inactive', 'suspended'],
+    defaultValue: 'active'
+  },
+  phone: {
+    type: 'VARCHAR(15)',
+    allowNull: true
+  },
+  address: {
+    type: 'TEXT',
+    allowNull: true
+  },
+  profile_picture: {
+    type: 'VARCHAR(255)',
+    allowNull: true,
+    comment: 'Path to profile image'
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  },
+  updated_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+  },
+  last_login: {
+    type: 'TIMESTAMP',
+    allowNull: true
+  }
+};
+
+// ===============================================
+// 2. USER DETAILS TABLES - Detail Pengguna per Role
+// ===============================================
+
+// 2a. Student Details
+const students = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  user_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  nim: {
+    type: 'VARCHAR(20)',
+    unique: true,
+    allowNull: false
+  },
+  program_study: {
+    type: 'VARCHAR(100)',
+    allowNull: false
+  },
+  semester: {
+    type: 'INTEGER',
+    allowNull: false
+  },
+  academic_year: {
+    type: 'VARCHAR(10)',
+    allowNull: false,
+    comment: 'Format: 2024/2025'
+  },
+  entry_year: {
+    type: 'YEAR',
+    allowNull: false
+  },
+  gpa: {
+    type: 'DECIMAL(3,2)',
+    allowNull: true,
+    comment: 'Grade Point Average'
+  },
+  guardian_name: {
+    type: 'VARCHAR(100)',
+    allowNull: true
+  },
+  guardian_phone: {
+    type: 'VARCHAR(15)',
+    allowNull: true
+  }
+};
+
+// 2b. Lecturer Details
+const lecturers = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  user_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  nip: {
+    type: 'VARCHAR(20)',
+    unique: true,
+    allowNull: false
+  },
+  department: {
+    type: 'VARCHAR(100)',
+    allowNull: false
+  },
+  position: {
+    type: 'VARCHAR(50)',
+    allowNull: false,
+    comment: 'Dosen, Asisten Dosen, etc.'
+  },
+  expertise: {
+    type: 'TEXT',
+    allowNull: true,
+    comment: 'Bidang keahlian'
+  },
+  education_level: {
+    type: 'VARCHAR(10)',
+    allowNull: true,
+    comment: 'S1, S2, S3, Prof.'
+  },
+  room_office: {
+    type: 'VARCHAR(20)',
+    allowNull: true
+  }
+};
+
+// 2c. Super Admin Details
+const super_admins = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  user_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  admin_level: {
+    type: 'ENUM',
+    values: ['system_admin', 'faculty_admin', 'it_admin'],
+    allowNull: false
+  },
+  permissions: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'Array of specific permissions'
+  },
+  department_access: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'Array of accessible departments'
+  }
+};
+
+// ===============================================
+// 3. COURSES & CURRICULUM - Mata Kuliah & Kurikulum
+// ===============================================
+
+// 3a. Courses Table
+const courses = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  course_code: {
+    type: 'VARCHAR(20)',
+    unique: true,
+    allowNull: false
+  },
+  course_name: {
+    type: 'VARCHAR(150)',
+    allowNull: false
+  },
+  credits: {
+    type: 'INTEGER',
+    allowNull: false,
+    comment: 'SKS - Satuan Kredit Semester'
+  },
+  semester: {
+    type: 'INTEGER',
+    allowNull: false,
+    comment: 'Semester ke berapa mata kuliah ini'
+  },
+  program_study: {
+    type: 'VARCHAR(100)',
+    allowNull: false
+  },
+  description: {
+    type: 'TEXT',
+    allowNull: true
+  },
+  prerequisites: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'Array of prerequisite course IDs'
+  },
+  status: {
+    type: 'ENUM',
+    values: ['active', 'inactive'],
+    defaultValue: 'active'
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  }
+};
+
+// 3b. Course Classes - Kelas per Mata Kuliah
+const course_classes = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  course_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'courses',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  lecturer_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'lecturers',
+      key: 'id'
+    },
+    onDelete: 'SET NULL'
+  },
+  class_name: {
+    type: 'VARCHAR(10)',
+    allowNull: false,
+    comment: 'A, B, C, etc.'
+  },
+  academic_year: {
+    type: 'VARCHAR(10)',
+    allowNull: false
+  },
+  semester_period: {
+    type: 'ENUM',
+    values: ['ganjil', 'genap'],
+    allowNull: false
+  },
+  max_students: {
+    type: 'INTEGER',
+    defaultValue: 40
+  },
+  room_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'rooms',
+      key: 'id'
+    },
+    allowNull: true
+  },
+  schedule: {
+    type: 'JSON',
+    allowNull: false,
+    comment: 'Array of schedule objects: [{day, start_time, end_time, room_id}]'
+  },
+  status: {
+    type: 'ENUM',
+    values: ['active', 'completed', 'cancelled'],
+    defaultValue: 'active'
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  }
+};
+
+// 3c. Student Enrollments - Pendaftaran Mahasiswa ke Kelas
+const student_enrollments = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  student_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'students',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  class_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'course_classes',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  enrollment_date: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  },
+  status: {
+    type: 'ENUM',
+    values: ['enrolled', 'dropped', 'completed'],
+    defaultValue: 'enrolled'
+  },
+  final_grade: {
+    type: 'VARCHAR(2)',
+    allowNull: true,
+    comment: 'A, B+, B, C+, C, D+, D, E'
+  },
+  final_score: {
+    type: 'DECIMAL(5,2)',
+    allowNull: true
+  }
+};
+
+// ===============================================
+// 4. ROOMS & FACILITIES - Ruangan & Fasilitas
+// ===============================================
+
+const rooms = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  room_code: {
+    type: 'VARCHAR(20)',
+    unique: true,
+    allowNull: false
+  },
+  room_name: {
+    type: 'VARCHAR(100)',
+    allowNull: false
+  },
+  building: {
+    type: 'VARCHAR(50)',
+    allowNull: false
+  },
+  floor: {
+    type: 'INTEGER',
+    allowNull: false
+  },
+  capacity: {
+    type: 'INTEGER',
+    allowNull: false
+  },
+  room_type: {
+    type: 'ENUM',
+    values: ['classroom', 'laboratory', 'auditorium', 'meeting_room', 'office'],
+    allowNull: false
+  },
+  facilities: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'Array of available facilities: projector, AC, etc.'
+  },
+  has_face_recognition: {
+    type: 'BOOLEAN',
+    defaultValue: false
+  },
+  door_access_code: {
+    type: 'VARCHAR(50)',
+    allowNull: true,
+    comment: 'Code for electronic door lock'
+  },
+  status: {
+    type: 'ENUM',
+    values: ['available', 'maintenance', 'unavailable'],
+    defaultValue: 'available'
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  }
+};
+
+// ===============================================
+// 5. ATTENDANCE SYSTEM - Sistem Absensi
+// ===============================================
+
+// 5a. Attendance Sessions - Sesi Perkuliahan
+const attendance_sessions = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  class_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'course_classes',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  session_number: {
+    type: 'INTEGER',
+    allowNull: false,
+    comment: 'Pertemuan ke-berapa'
+  },
+  session_date: {
+    type: 'DATE',
+    allowNull: false
+  },
+  start_time: {
+    type: 'TIME',
+    allowNull: false
+  },
+  end_time: {
+    type: 'TIME',
+    allowNull: false
+  },
+  room_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'rooms',
+      key: 'id'
+    },
+    allowNull: true
+  },
+  topic: {
+    type: 'VARCHAR(200)',
+    allowNull: true,
+    comment: 'Materi yang diajarkan'
+  },
+  session_type: {
+    type: 'ENUM',
+    values: ['regular', 'makeup', 'exam', 'quiz'],
+    defaultValue: 'regular'
+  },
+  attendance_method: {
+    type: 'ENUM',
+    values: ['face_recognition', 'qr_code', 'manual', 'mixed'],
+    defaultValue: 'face_recognition'
+  },
+  qr_code: {
+    type: 'TEXT',
+    allowNull: true,
+    comment: 'QR Code data for attendance'
+  },
+  qr_expire_time: {
+    type: 'TIMESTAMP',
+    allowNull: true
+  },
+  attendance_open_time: {
+    type: 'TIMESTAMP',
+    allowNull: true
+  },
+  attendance_close_time: {
+    type: 'TIMESTAMP',
+    allowNull: true
+  },
+  status: {
+    type: 'ENUM',
+    values: ['scheduled', 'ongoing', 'completed', 'cancelled'],
+    defaultValue: 'scheduled'
+  },
+  notes: {
+    type: 'TEXT',
+    allowNull: true
+  },
+  created_by: {
+    type: 'INTEGER',
+    references: {
+      model: 'lecturers',
+      key: 'id'
+    },
+    onDelete: 'SET NULL'
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  },
+  updated_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+  }
+};
+
+// 5b. Student Attendance Records - Rekaman Kehadiran Mahasiswa
+const student_attendances = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  session_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'attendance_sessions',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  student_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'students',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  status: {
+    type: 'ENUM',
+    values: ['present', 'absent', 'late', 'excused', 'sick'],
+    allowNull: false
+  },
+  check_in_time: {
+    type: 'TIMESTAMP',
+    allowNull: true
+  },
+  check_out_time: {
+    type: 'TIMESTAMP',
+    allowNull: true
+  },
+  attendance_method: {
+    type: 'ENUM',
+    values: ['face_recognition', 'qr_code', 'manual'],
+    allowNull: true
+  },
+  confidence_score: {
+    type: 'DECIMAL(5,4)',
+    allowNull: true,
+    comment: 'Face recognition confidence score (0-1)'
+  },
+  location_lat: {
+    type: 'DECIMAL(10,8)',
+    allowNull: true
+  },
+  location_lng: {
+    type: 'DECIMAL(11,8)',
+    allowNull: true
+  },
+  notes: {
+    type: 'TEXT',
+    allowNull: true
+  },
+  verified_by: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    allowNull: true,
+    comment: 'Who verified manual attendance'
+  },
+  verified_at: {
+    type: 'TIMESTAMP',
+    allowNull: true
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  },
+  updated_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+  }
+};
+
+// ===============================================
+// 6. FACE RECOGNITION SYSTEM - Sistem Pengenalan Wajah
+// ===============================================
+
+// 6a. Face Datasets - Dataset Wajah
+const face_datasets = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  user_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  image_path: {
+    type: 'VARCHAR(255)',
+    allowNull: false
+  },
+  image_name: {
+    type: 'VARCHAR(100)',
+    allowNull: false
+  },
+  encoding_data: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'Face encoding vector data'
+  },
+  image_quality: {
+    type: 'ENUM',
+    values: ['excellent', 'good', 'fair', 'poor'],
+    allowNull: true
+  },
+  face_landmarks: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'Facial landmark points'
+  },
+  is_primary: {
+    type: 'BOOLEAN',
+    defaultValue: false,
+    comment: 'Primary photo for recognition'
+  },
+  verification_status: {
+    type: 'ENUM',
+    values: ['pending', 'approved', 'rejected'],
+    defaultValue: 'pending'
+  },
+  verified_by: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    allowNull: true
+  },
+  verified_at: {
+    type: 'TIMESTAMP',
+    allowNull: true
+  },
+  upload_method: {
+    type: 'ENUM',
+    values: ['single_upload', 'bulk_upload', 'camera_capture'],
+    allowNull: false
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  }
+};
+
+// 6b. Face Recognition Logs - Log Pengenalan Wajah
+const face_recognition_logs = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  session_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'attendance_sessions',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  recognized_user_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    allowNull: true
+  },
+  confidence_score: {
+    type: 'DECIMAL(5,4)',
+    allowNull: false
+  },
+  captured_image_path: {
+    type: 'VARCHAR(255)',
+    allowNull: true
+  },
+  recognition_status: {
+    type: 'ENUM',
+    values: ['success', 'failed', 'low_confidence', 'no_face_detected'],
+    allowNull: false
+  },
+  processing_time: {
+    type: 'INTEGER',
+    allowNull: true,
+    comment: 'Processing time in milliseconds'
+  },
+  camera_id: {
+    type: 'VARCHAR(50)',
+    allowNull: true
+  },
+  room_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'rooms',
+      key: 'id'
+    },
+    allowNull: true
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  }
+};
+
+// ===============================================
+// 7. NOTIFICATIONS SYSTEM - Sistem Notifikasi
+// ===============================================
+
+const notifications = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  recipient_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  sender_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    allowNull: true,
+    onDelete: 'SET NULL'
+  },
+  type: {
+    type: 'ENUM',
+    values: [
+      'attendance_reminder', 
+      'session_cancelled', 
+      'session_rescheduled',
+      'low_attendance_warning',
+      'face_dataset_approved',
+      'face_dataset_rejected',
+      'system_maintenance',
+      'security_alert',
+      'grade_updated',
+      'general_announcement'
+    ],
+    allowNull: false
+  },
+  title: {
+    type: 'VARCHAR(200)',
+    allowNull: false
+  },
+  message: {
+    type: 'TEXT',
+    allowNull: false
+  },
+  data: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'Additional data related to notification'
+  },
+  priority: {
+    type: 'ENUM',
+    values: ['low', 'normal', 'high', 'urgent'],
+    defaultValue: 'normal'
+  },
+  is_read: {
+    type: 'BOOLEAN',
+    defaultValue: false
+  },
+  read_at: {
+    type: 'TIMESTAMP',
+    allowNull: true
+  },
+  delivery_method: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'Array of delivery methods: email, push, sms'
+  },
+  scheduled_at: {
+    type: 'TIMESTAMP',
+    allowNull: true,
+    comment: 'For scheduled notifications'
+  },
+  expires_at: {
+    type: 'TIMESTAMP',
+    allowNull: true
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  }
+};
+
+// ===============================================
+// 8. ROOM ACCESS CONTROL - Kontrol Akses Ruangan
+// ===============================================
+
+// 8a. Door Access Logs - Log Akses Pintu
+const door_access_logs = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  room_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'rooms',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  user_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    allowNull: true,
+    onDelete: 'SET NULL'
+  },
+  access_type: {
+    type: 'ENUM',
+    values: ['face_recognition', 'keycard', 'manual_override', 'emergency'],
+    allowNull: false
+  },
+  access_status: {
+    type: 'ENUM',
+    values: ['granted', 'denied', 'forced'],
+    allowNull: false
+  },
+  confidence_score: {
+    type: 'DECIMAL(5,4)',
+    allowNull: true
+  },
+  reason: {
+    type: 'VARCHAR(200)',
+    allowNull: true,
+    comment: 'Reason for denial or override'
+  },
+  accessed_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  },
+  session_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'attendance_sessions',
+      key: 'id'
+    },
+    allowNull: true,
+    comment: 'Related attendance session if applicable'
+  }
+};
+
+// 8b. Room Access Permissions - Izin Akses Ruangan
+const room_access_permissions = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  user_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  room_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'rooms',
+      key: 'id'
+    },
+    onDelete: 'CASCADE'
+  },
+  permission_type: {
+    type: 'ENUM',
+    values: ['full_access', 'scheduled_access', 'limited_access'],
+    allowNull: false
+  },
+  start_date: {
+    type: 'DATE',
+    allowNull: true
+  },
+  end_date: {
+    type: 'DATE',
+    allowNull: true
+  },
+  time_restrictions: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'Array of time slots when access is allowed'
+  },
+  granted_by: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    onDelete: 'SET NULL'
+  },
+  is_active: {
+    type: 'BOOLEAN',
+    defaultValue: true
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  }
+};
+
+// ===============================================
+// 9. SYSTEM LOGS & AUDIT TRAIL - Log Sistem & Jejak Audit
+// ===============================================
+
+const system_logs = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  user_id: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    allowNull: true,
+    onDelete: 'SET NULL'
+  },
+  action: {
+    type: 'VARCHAR(100)',
+    allowNull: false,
+    comment: 'Action performed: login, logout, create_user, etc.'
+  },
+  table_name: {
+    type: 'VARCHAR(50)',
+    allowNull: true,
+    comment: 'Table affected by the action'
+  },
+  record_id: {
+    type: 'INTEGER',
+    allowNull: true,
+    comment: 'ID of affected record'
+  },
+  old_values: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'Previous values before update'
+  },
+  new_values: {
+    type: 'JSON',
+    allowNull: true,
+    comment: 'New values after update'
+  },
+  ip_address: {
+    type: 'VARCHAR(45)',
+    allowNull: true
+  },
+  user_agent: {
+    type: 'TEXT',
+    allowNull: true
+  },
+  session_id: {
+    type: 'VARCHAR(128)',
+    allowNull: true
+  },
+  severity: {
+    type: 'ENUM',
+    values: ['info', 'warning', 'error', 'critical'],
+    defaultValue: 'info'
+  },
+  created_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP'
+  }
+};
+
+// ===============================================
+// 10. SETTINGS & CONFIGURATIONS - Pengaturan & Konfigurasi
+// ===============================================
+
+const system_settings = {
+  id: {
+    type: 'INTEGER',
+    primaryKey: true,
+    autoIncrement: true
+  },
+  setting_key: {
+    type: 'VARCHAR(100)',
+    unique: true,
+    allowNull: false
+  },
+  setting_value: {
+    type: 'TEXT',
+    allowNull: true
+  },
+  setting_type: {
+    type: 'ENUM',
+    values: ['string', 'integer', 'boolean', 'json'],
+    allowNull: false
+  },
+  category: {
+    type: 'VARCHAR(50)',
+    allowNull: false,
+    comment: 'attendance, security, notification, etc.'
+  },
+  description: {
+    type: 'TEXT',
+    allowNull: true
+  },
+  is_public: {
+    type: 'BOOLEAN',
+    defaultValue: false,
+    comment: 'Can be accessed by non-admin users'
+  },
+  updated_by: {
+    type: 'INTEGER',
+    references: {
+      model: 'users',
+      key: 'id'
+    },
+    allowNull: true,
+    onDelete: 'SET NULL'
+  },
+  updated_at: {
+    type: 'TIMESTAMP',
+    defaultValue: 'CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+  }
+};
+
+// ===============================================
+// DATABASE RELATIONSHIPS & INDEXES
+// ===============================================
+
+/*
+PRIMARY RELATIONSHIPS:
+1. users -> students/lecturers/super_admins (1:1)
+2. courses -> course_classes (1:many)
+3. lecturers -> course_classes (1:many)
+4. course_classes -> student_enrollments (1:many)
+5. course_classes -> attendance_sessions (1:many)
+6. attendance_sessions -> student_attendances (1:many)
+7. users -> face_datasets (1:many)
+8. users -> notifications (1:many)
+9. rooms -> attendance_sessions (1:many)
+10. rooms -> door_access_logs (1:many)
+
+IMPORTANT INDEXES:
+- users: (user_id), (email), (role, status)
+- students: (nim), (user_id)
+- lecturers: (nip), (user_id)
+- courses: (course_code), (program_study)
+- course_classes: (course_id, academic_year), (lecturer_id)
+- student_enrollments: (student_id, status), (class_id)
+- attendance_sessions: (class_id, session_date), (status)
+- student_attendances: (session_id, student_id), (status)
+- face_datasets: (user_id, verification_status), (is_primary)
+- notifications: (recipient_id, is_read), (type, created_at)
+- door_access_logs: (room_id, accessed_at), (user_id)
+- system_logs: (user_id, created_at), (action, table_name)
+
+BUSINESS RULES:
+1. Student can only enroll to classes in their program_study
+2. Attendance session must be within class schedule time
+3. Face dataset must be approved before use in recognition
+4. Room access permissions expire automatically
+5. Notifications auto-delete after expiry date
+6. System logs retained for audit (configurable retention period)
+*/
+
+// ===============================================
+// SAMPLE SYSTEM SETTINGS
+// ===============================================
+
+/*
+INSERT INTO system_settings (setting_key, setting_value, setting_type, category, description) VALUES
+('attendance_late_threshold', '15', 'integer', 'attendance', 'Minutes after start time to mark as late'),
+('face_recognition_threshold', '0.6', 'string', 'security', 'Minimum confidence score for face recognition'),
+('qr_code_expire_minutes', '10', 'integer', 'attendance', 'QR code expiration time in minutes'),
+('max_face_datasets_per_user', '5', 'integer', 'security', 'Maximum face photos per user'),
+('notification_retention_days', '30', 'integer', 'notification', 'Days to keep notifications'),
+('system_log_retention_days', '90', 'integer', 'system', 'Days to keep system logs'),
+('attendance_auto_close', 'true', 'boolean', 'attendance', 'Auto close attendance after end time'),
+('email_notifications_enabled', 'true', 'boolean', 'notification', 'Enable email notifications'),
+('door_access_log_enabled', 'true', 'boolean', 'security', 'Enable door access logging'),
+('backup_schedule', '{"daily": "02:00", "weekly": "sunday"}', 'json', 'system', 'Automatic backup schedule');
+*/

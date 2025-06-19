@@ -33,13 +33,12 @@ const helpTopics = [
         icon: <MdPeople className="h-8 w-8 text-green-600" />,
         description: "Panduan untuk mengelola data mahasiswa dan statistik kehadiran",
         url: "/lecturer/help/user-guide#students"
-    },
-    {
+    }, {
         id: 3,
-        title: "Permintaan Izin/Sakit",
+        title: "Manajemen Absensi",
         icon: <MdNotificationsActive className="h-8 w-8 text-orange-600" />,
-        description: "Cara menyetujui atau menolak permintaan izin mahasiswa",
-        url: "/lecturer/help/user-guide#leave-requests"
+        description: "Cara mengelola dan memverifikasi absensi mahasiswa",
+        url: "/lecturer/help/user-guide#attendance"
     },
     {
         id: 4,

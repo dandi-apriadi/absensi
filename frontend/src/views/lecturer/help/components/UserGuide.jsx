@@ -63,32 +63,30 @@ const sections = [
                 image: "/assets/guide/manual-attendance.png"
             }
         ]
-    },
-    {
-        id: "leave-requests",
-        title: "Manajemen Izin/Sakit",
+    }, {
+        id: "manual-attendance",
+        title: "Verifikasi Absensi Manual",
         icon: <MdApproval className="h-6 w-6 text-green-600" />,
         content: [
             {
-                title: "Menyetujui atau Menolak Permintaan Izin",
+                title: "Memverifikasi Absensi Mahasiswa",
                 steps: [
-                    "Buka menu 'Manajemen Izin/Sakit' -> 'Permintaan Tertunda'",
-                    "Daftar permintaan izin yang belum diproses akan ditampilkan",
-                    "Klik tombol 'Lihat Detail' untuk melihat detail permintaan",
-                    "Periksa alasan dan lampiran yang diberikan mahasiswa",
-                    "Tambahkan catatan jika diperlukan",
-                    "Klik 'Setujui' atau 'Tolak' sesuai keputusan Anda"
-                ],
-                image: "/assets/guide/leave-approval.png"
+                    "Buka menu 'Manajemen Absensi' -> 'Absensi Manual'",
+                    "Pilih mata kuliah dan tanggal yang ingin diverifikasi",
+                    "Daftar mahasiswa dan status kehadiran akan ditampilkan",
+                    "Periksa data absensi yang telah tercatat",
+                    "Ubah status jika diperlukan koreksi",
+                    "Klik 'Simpan Perubahan' untuk menyimpan verifikasi"],
+                image: "/assets/guide/manual-verification.png"
             },
             {
-                title: "Melihat Riwayat Permintaan Izin",
+                title: "Melihat Riwayat Absensi",
                 steps: [
-                    "Buka menu 'Manajemen Izin/Sakit' -> 'Riwayat Permintaan'",
-                    "Anda dapat memfilter berdasarkan status, mata kuliah, atau kata kunci",
-                    "Klik tombol 'Lihat Detail' untuk melihat detail permintaan yang telah diproses sebelumnya"
+                    "Buka menu 'Manajemen Absensi' -> 'Riwayat Absensi'",
+                    "Anda dapat memfilter berdasarkan mata kuliah, tanggal, atau kata kunci",
+                    "Klik tombol 'Lihat Detail' untuk melihat detail absensi yang telah tercatat"
                 ],
-                image: "/assets/guide/leave-history.png"
+                image: "/assets/guide/attendance-history.png"
             }
         ]
     },
@@ -189,8 +187,8 @@ const UserGuide = () => {
                                         <button
                                             onClick={() => setActiveSection(section.id)}
                                             className={`w-full flex items-center px-3 py-2 rounded-lg text-left ${activeSection === section.id
-                                                    ? "bg-indigo-50 text-indigo-700"
-                                                    : "text-gray-700 hover:bg-gray-100"
+                                                ? "bg-indigo-50 text-indigo-700"
+                                                : "text-gray-700 hover:bg-gray-100"
                                                 }`}
                                         >
                                             {section.icon}

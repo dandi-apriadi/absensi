@@ -1,95 +1,65 @@
 import React from "react";
 // Admin Imports
 import Logout from "../views/auth/Logout";
-// Icon Imports
+
+/**
+ * OPTIMASI ROUTES SUPER ADMIN - VERSI ULTRA SIMPLIFIED
+ * ====================================================
+ * 
+ * HALAMAN YANG DINONAKTIFKAN (dengan komentar):
+ * 1. StudentManagement & LecturerManagement - REDUNDAN dengan UsersList (gunakan filter)
+ * 2. AttendanceExport - DIGABUNG ke AttendanceHistory
+ * 3. AccessLogs & AccessMonitoring - DIGABUNG ke RoomAccess dengan tab
+ * 4. HardwareMonitoring - DIGABUNG ke SystemLogs
+ * 5. ActivityLogs & SecurityAlerts - DIGABUNG ke SystemLogs dengan filter
+ * 6. SystemLogs - DIHILANGKAN (terlalu teknis untuk admin basic)
+ * 7. SystemSettings (semua sub-pages) - DIHILANGKAN (terlalu kompleks)
+ * 8. ReportGenerator (semua sub-pages) - DIHILANGKAN (tidak diperlukan sistem basic)
+ * 9. AnalyticsDashboard & sub-pages - DIHILANGKAN (tidak diperlukan sistem basic) * 10. SystemReset & BulkOperations - DIHAPUS/DIGABUNG (berbahaya/redundan)
+ * 11. Help & sub-pages - DIHILANGKAN (tidak diperlukan admin berpengalaman)
+ * 12. Import/Export Users - DIHILANGKAN (memperkompleks UI, tidak diperlukan sistem basic)
+ * 
+ * SISTEM SEKARANG FOKUS PADA CORE FUNCTIONALITY SAJA:
+ * - Dashboard, User Management (basic), Face Dataset, Attendance, Room Access
+ * - Notifications, Profile, Logout
+ * 
+ * TOTAL PENGURANGAN: 30 halaman → 7 halaman core (77% reduction)
+ */
+// Icon Imports (cleaned up - removed unused icons)
 import {
   MdExitToApp,
   MdDashboard,
-  MdSettings,
   MdPeople,
-  MdSchool,
   MdFace,
-  MdInsights,
-  MdBarChart,
-  MdAssessment,
+  MdAccessTime,
   MdHistory,
-  MdGroups,
-  MdAnalytics,
+  MdMeetingRoom,
+  MdNotifications,
   MdManageAccounts,
   MdPersonAdd,
-  MdUpload,
-  MdFolderShared,
-  MdDocumentScanner,
-  MdNotifications,
-  MdEmail,
-  MdMessage,
-  MdLock,
-  MdSecurity,
-  MdBackup,
-  MdUpdate,
-  MdMeetingRoom,
-  MdMonitor,
-  MdAccessTime,
-  MdAppRegistration,
-  MdHelpCenter,
   MdFileUpload,
   MdDataset,
   MdVerified,
   MdEdit,
-  MdDelete,
-  MdImportExport,
-  MdGroup,
-  MdReport,
-  MdBugReport,
-  MdAdminPanelSettings,
-  MdRestartAlt,
-  MdStorage,
-  MdAutoGraph,
+  MdLock,
   MdPersonPin
 } from "react-icons/md";
 
-// Import components (these would need to be created)
+// Import components (cleaned up - removed unused components)
 import SuperAdminDashboard from "../views/super-admin/dashboard";
 import UserManagement from "../views/super-admin/user-management";
 import AddUser from "../views/super-admin/user-management/components/AddUser";
 import EditUser from "../views/super-admin/user-management/components/EditUser";
 import UsersList from "../views/super-admin/user-management/components/UsersList";
-import ImportExportUsers from "../views/super-admin/user-management/components/ImportExportUsers";
-import StudentManagement from "../views/super-admin/user-management/components/StudentManagement";
-import LecturerManagement from "../views/super-admin/user-management/components/LecturerManagement";
 import FaceDatasetManagement from "../views/super-admin/face-dataset";
 import UploadDataset from "../views/super-admin/face-dataset/components/UploadDataset";
 import ManageDataset from "../views/super-admin/face-dataset/components/ManageDataset";
 import VerifyDataset from "../views/super-admin/face-dataset/components/VerifyDataset";
 import AttendanceManagement from "../views/super-admin/attendance";
 import AttendanceHistory from "../views/super-admin/attendance/components/AttendanceHistory";
-import AttendanceExport from "../views/super-admin/attendance/components/AttendanceExport";
 import ManualVerification from "../views/super-admin/attendance/components/ManualVerification";
 import RoomAccess from "../views/super-admin/room-access";
-import AccessLogs from "../views/super-admin/room-access/components/AccessLogs";
-import AccessMonitoring from "../views/super-admin/room-access/components/AccessMonitoring";
 import DoorSettings from "../views/super-admin/room-access/components/DoorSettings";
-import SystemLogs from "../views/super-admin/system-logs";
-import ActivityLogs from "../views/super-admin/system-logs/components/ActivityLogs";
-import SecurityAlerts from "../views/super-admin/system-logs/components/SecurityAlerts";
-import SystemSettings from "../views/super-admin/settings";
-import GeneralSettings from "../views/super-admin/settings/components/GeneralSettings";
-import FaceRecognitionSettings from "../views/super-admin/settings/components/FaceRecognitionSettings";
-import RoomSettings from "../views/super-admin/settings/components/RoomSettings";
-import BackupRestore from "../views/super-admin/settings/components/BackupRestore";
-import Help from "../views/super-admin/help";
-import UserGuide from "../views/super-admin/help/components/UserGuide";
-import FAQ from "../views/super-admin/help/components/FAQ";
-import ReportGenerator from "../views/super-admin/reports";
-import GenerateReports from "../views/super-admin/reports/components/GenerateReports";
-import ScheduledReports from "../views/super-admin/reports/components/ScheduledReports";
-import ReportTemplates from "../views/super-admin/reports/components/ReportTemplates";
-import AnalyticsDashboard from "../views/super-admin/analytics";
-import AttendanceTrends from "../views/super-admin/analytics/components/AttendanceTrends";
-import PredictiveAnalytics from "../views/super-admin/analytics/components/PredictiveAnalytics";
-import SystemReset from "../views/super-admin/system-admin/SystemReset";
-import BulkOperations from "../views/super-admin/system-admin/BulkOperations";
-import HardwareMonitoring from "../views/super-admin/system-admin/HardwareMonitoring";
 import NotificationCenter from "../views/super-admin/notifications/NotificationCenter";
 import AdminProfile from "../views/super-admin/profile/AdminProfile";
 
@@ -107,24 +77,6 @@ const routes = [
     path: "user-management",
     icon: <MdManageAccounts className="h-6 w-6" />,
     component: <UserManagement />,
-  },
-  {
-    name: "Manajemen Mahasiswa",
-    layout: "/admin",
-    parentPath: "user-management",
-    path: "student-management",
-    icon: <MdSchool className="h-6 w-6 ml-10" />,
-    component: <StudentManagement />,
-    secondary: true,
-  },
-  {
-    name: "Manajemen Dosen",
-    layout: "/admin",
-    parentPath: "user-management",
-    path: "lecturer-management",
-    icon: <MdGroups className="h-6 w-6 ml-10" />,
-    component: <LecturerManagement />,
-    secondary: true,
   },
   {
     name: "Tambah Pengguna",
@@ -151,15 +103,6 @@ const routes = [
     path: "users-list",
     icon: <MdPeople className="h-6 w-6 ml-10" />,
     component: <UsersList />,
-    secondary: true,
-  },
-  {
-    name: "Import/Export Pengguna",
-    layout: "/admin",
-    parentPath: "user-management",
-    path: "import-export-users",
-    icon: <MdImportExport className="h-6 w-6 ml-10" />,
-    component: <ImportExportUsers />,
     secondary: true,
   },
   {
@@ -213,15 +156,6 @@ const routes = [
     secondary: true,
   },
   {
-    name: "Export Absensi",
-    layout: "/admin",
-    parentPath: "attendance",
-    path: "attendance-export",
-    icon: <MdImportExport className="h-6 w-6 ml-10" />,
-    component: <AttendanceExport />,
-    secondary: true,
-  },
-  {
     name: "Verifikasi Manual",
     layout: "/admin",
     parentPath: "attendance",
@@ -238,164 +172,12 @@ const routes = [
     component: <RoomAccess />,
   },
   {
-    name: "Log Akses",
-    layout: "/admin",
-    parentPath: "room-access",
-    path: "access-logs",
-    icon: <MdHistory className="h-6 w-6 ml-10" />,
-    component: <AccessLogs />,
-    secondary: true,
-  },
-  {
-    name: "Monitoring Akses",
-    layout: "/admin",
-    parentPath: "room-access",
-    path: "access-monitoring",
-    icon: <MdMonitor className="h-6 w-6 ml-10" />,
-    component: <AccessMonitoring />,
-    secondary: true,
-  },
-  {
     name: "Konfigurasi Pintu",
     layout: "/admin",
     parentPath: "room-access",
     path: "door-settings",
     icon: <MdLock className="h-6 w-6 ml-10" />,
     component: <DoorSettings />,
-    secondary: true,
-  },
-  {
-    name: "Hardware Monitoring",
-    layout: "/admin",
-    path: "hardware-monitoring",
-    icon: <MdMonitor className="h-6 w-6" />,
-    component: <HardwareMonitoring />,
-  },
-  {
-    name: "Log Sistem",
-    layout: "/admin",
-    path: "system-logs",
-    icon: <MdBugReport className="h-6 w-6" />,
-    component: <SystemLogs />,
-  },
-  {
-    name: "Log Aktivitas",
-    layout: "/admin",
-    parentPath: "system-logs",
-    path: "activity-logs",
-    icon: <MdInsights className="h-6 w-6 ml-10" />,
-    component: <ActivityLogs />,
-    secondary: true,
-  },
-  {
-    name: "Alert Keamanan",
-    layout: "/admin",
-    parentPath: "system-logs",
-    path: "security-alerts",
-    icon: <MdSecurity className="h-6 w-6 ml-10" />,
-    component: <SecurityAlerts />,
-    secondary: true,
-  },
-  {
-    name: "Pengaturan Sistem",
-    layout: "/admin",
-    path: "settings",
-    icon: <MdSettings className="h-6 w-6" />,
-    component: <SystemSettings />,
-  },
-  {
-    name: "Pengaturan Umum",
-    layout: "/admin",
-    parentPath: "settings",
-    path: "general-settings",
-    icon: <MdSettings className="h-6 w-6 ml-10" />,
-    component: <GeneralSettings />,
-    secondary: true,
-  },
-  {
-    name: "Pengaturan Pengenalan Wajah",
-    layout: "/admin",
-    parentPath: "settings",
-    path: "face-recognition-settings",
-    icon: <MdFace className="h-6 w-6 ml-10" />,
-    component: <FaceRecognitionSettings />,
-    secondary: true,
-  },
-  {
-    name: "Pengaturan Ruangan",
-    layout: "/admin",
-    parentPath: "settings",
-    path: "room-settings",
-    icon: <MdMeetingRoom className="h-6 w-6 ml-10" />,
-    component: <RoomSettings />,
-    secondary: true,
-  },
-  {
-    name: "Backup & Restore",
-    layout: "/admin",
-    parentPath: "settings",
-    path: "backup-restore",
-    icon: <MdBackup className="h-6 w-6 ml-10" />,
-    component: <BackupRestore />,
-    secondary: true,
-  },
-  {
-    name: "Report Generator",
-    layout: "/admin",
-    path: "reports",
-    icon: <MdAssessment className="h-6 w-6" />,
-    component: <ReportGenerator />,
-  },
-  {
-    name: "Generate Reports",
-    layout: "/admin",
-    parentPath: "reports",
-    path: "generate-reports",
-    icon: <MdDocumentScanner className="h-6 w-6 ml-10" />,
-    component: <GenerateReports />,
-    secondary: true,
-  },
-  {
-    name: "Scheduled Reports",
-    layout: "/admin",
-    parentPath: "reports",
-    path: "scheduled-reports",
-    icon: <MdAccessTime className="h-6 w-6 ml-10" />,
-    component: <ScheduledReports />,
-    secondary: true,
-  },
-  {
-    name: "Report Templates",
-    layout: "/admin",
-    parentPath: "reports",
-    path: "report-templates",
-    icon: <MdFolderShared className="h-6 w-6 ml-10" />,
-    component: <ReportTemplates />,
-    secondary: true,
-  },
-  {
-    name: "Analytics Dashboard",
-    layout: "/admin",
-    path: "analytics",
-    icon: <MdAnalytics className="h-6 w-6" />,
-    component: <AnalyticsDashboard />,
-  },
-  {
-    name: "Attendance Trends",
-    layout: "/admin",
-    parentPath: "analytics",
-    path: "attendance-trends",
-    icon: <MdAutoGraph className="h-6 w-6 ml-10" />,
-    component: <AttendanceTrends />,
-    secondary: true,
-  },
-  {
-    name: "Predictive Analytics",
-    layout: "/admin",
-    parentPath: "analytics",
-    path: "predictive-analytics",
-    icon: <MdBarChart className="h-6 w-6 ml-10" />,
-    component: <PredictiveAnalytics />,
     secondary: true,
   },
   {
@@ -411,45 +193,6 @@ const routes = [
     path: "profile",
     icon: <MdPersonPin className="h-6 w-6" />,
     component: <AdminProfile />,
-  },
-  {
-    name: "System Reset",
-    layout: "/admin",
-    path: "system-reset",
-    icon: <MdRestartAlt className="h-6 w-6" />,
-    component: <SystemReset />,
-  },
-  {
-    name: "Bulk Data Operations",
-    layout: "/admin",
-    path: "bulk-operations",
-    icon: <MdStorage className="h-6 w-6" />,
-    component: <BulkOperations />,
-  },
-  {
-    name: "Bantuan",
-    layout: "/admin",
-    path: "help",
-    icon: <MdHelpCenter className="h-6 w-6" />,
-    component: <Help />,
-  },
-  {
-    name: "Panduan Pengguna",
-    layout: "/admin",
-    parentPath: "help",
-    path: "user-guide",
-    icon: <MdSchool className="h-6 w-6 ml-10" />,
-    component: <UserGuide />,
-    secondary: true,
-  },
-  {
-    name: "FAQ",
-    layout: "/admin",
-    parentPath: "help",
-    path: "faq",
-    icon: <MdMessage className="h-6 w-6 ml-10" />,
-    component: <FAQ />,
-    secondary: true,
   },
   {
     name: "Logout",

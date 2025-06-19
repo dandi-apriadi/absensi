@@ -17,70 +17,67 @@ import {
 } from "react-icons/md";
 
 // Dummy Data
-const notifications = [
-    {
-        id: 1,
-        title: "Permintaan Izin Baru",
-        message: "Budi Santoso (20210001) mengajukan izin sakit untuk mata kuliah Algoritma dan Pemrograman pada 15 Oktober 2023",
-        type: "leave_request",
-        isRead: false,
-        createdAt: "2023-10-14T15:30:22Z",
-        action: "/lecturer/leave-requests/pending-requests"
-    },
-    {
-        id: 2,
-        title: "Tingkat Kehadiran Rendah",
-        message: "3 mahasiswa memiliki tingkat kehadiran di bawah 75% di mata kuliah Pemrograman Web",
-        type: "attendance_alert",
-        isRead: false,
-        createdAt: "2023-10-14T09:20:10Z",
-        action: "/lecturer/students/attendance-stats"
-    },
-    {
-        id: 3,
-        title: "Permintaan Izin Disetujui",
-        message: "Anda menyetujui permintaan izin Diana Putri (20210004) untuk mata kuliah Algoritma dan Pemrograman",
-        type: "leave_approved",
-        isRead: true,
-        createdAt: "2023-10-13T13:45:30Z",
-        action: "/lecturer/leave-requests/request-history"
-    },
-    {
-        id: 4,
-        title: "Sesi Kelas Akan Datang",
-        message: "Anda memiliki kelas Basis Data - Normalisasi Database dalam 2 jam di Lab 302",
-        type: "upcoming_session",
-        isRead: true,
-        createdAt: "2023-10-13T08:00:00Z",
-        action: "/lecturer/sessions"
-    },
-    {
-        id: 5,
-        title: "Permintaan Izin Baru",
-        message: "Siti Nuraini (20210002) mengajukan izin untuk mata kuliah Basis Data pada 16 Oktober 2023",
-        type: "leave_request",
-        isRead: true,
-        createdAt: "2023-10-12T11:10:40Z",
-        action: "/lecturer/leave-requests/pending-requests"
-    },
-    {
-        id: 6,
-        title: "Pengaturan Sistem Diperbarui",
-        message: "Administrator telah memperbarui pengaturan sistem. Harap periksa panduan terbaru",
-        type: "system",
-        isRead: false,
-        createdAt: "2023-10-11T16:20:15Z",
-        action: "/lecturer/help/user-guide"
-    },
-    {
-        id: 7,
-        title: "Rekap Absensi Mingguan",
-        message: "Rekap absensi mingguan untuk semua mata kuliah Anda telah tersedia",
-        type: "report",
-        isRead: true,
-        createdAt: "2023-10-10T09:30:00Z",
-        action: "/lecturer/attendance/attendance-history"
-    }
+const notifications = [{
+    id: 1,
+    title: "Permintaan Izin Baru",
+    message: "Budi Santoso (20210001) mengajukan izin sakit untuk mata kuliah Algoritma dan Pemrograman pada 15 Oktober 2023",
+    type: "leave_request",
+    isRead: false,
+    createdAt: "2023-10-14T15:30:22Z",
+    action: "/lecturer/attendance"
+},
+{
+    id: 2,
+    title: "Tingkat Kehadiran Rendah",
+    message: "3 mahasiswa memiliki tingkat kehadiran di bawah 75% di mata kuliah Pemrograman Web",
+    type: "attendance_alert",
+    isRead: false,
+    createdAt: "2023-10-14T09:20:10Z",
+    action: "/lecturer/students/attendance-stats"
+}, {
+    id: 3,
+    title: "Permintaan Izin Disetujui",
+    message: "Anda menyetujui permintaan izin Diana Putri (20210004) untuk mata kuliah Algoritma dan Pemrograman",
+    type: "leave_approved",
+    isRead: true,
+    createdAt: "2023-10-13T13:45:30Z",
+    action: "/lecturer/attendance/attendance-history"
+},
+{
+    id: 4,
+    title: "Sesi Kelas Akan Datang",
+    message: "Anda memiliki kelas Basis Data - Normalisasi Database dalam 2 jam di Lab 302",
+    type: "upcoming_session",
+    isRead: true,
+    createdAt: "2023-10-13T08:00:00Z",
+    action: "/lecturer/sessions"
+}, {
+    id: 5,
+    title: "Permintaan Izin Baru",
+    message: "Siti Nuraini (20210002) mengajukan izin untuk mata kuliah Basis Data pada 16 Oktober 2023",
+    type: "leave_request",
+    isRead: true,
+    createdAt: "2023-10-12T11:10:40Z",
+    action: "/lecturer/attendance"
+},
+{
+    id: 6,
+    title: "Pengaturan Sistem Diperbarui",
+    message: "Administrator telah memperbarui pengaturan sistem. Harap periksa panduan terbaru",
+    type: "system",
+    isRead: false,
+    createdAt: "2023-10-11T16:20:15Z",
+    action: "/lecturer/help/user-guide"
+},
+{
+    id: 7,
+    title: "Rekap Absensi Mingguan",
+    message: "Rekap absensi mingguan untuk semua mata kuliah Anda telah tersedia",
+    type: "report",
+    isRead: true,
+    createdAt: "2023-10-10T09:30:00Z",
+    action: "/lecturer/attendance/attendance-history"
+}
 ];
 
 const NotificationCenter = () => {
@@ -206,8 +203,8 @@ const NotificationCenter = () => {
                             <button
                                 onClick={() => setFilter("all")}
                                 className={`w-full py-2 px-4 rounded-lg text-left text-sm flex items-center ${filter === "all"
-                                        ? "bg-indigo-100 text-indigo-800"
-                                        : "hover:bg-gray-100 text-gray-700"
+                                    ? "bg-indigo-100 text-indigo-800"
+                                    : "hover:bg-gray-100 text-gray-700"
                                     }`}
                             >
                                 <MdNotifications className="mr-3" />
@@ -220,8 +217,8 @@ const NotificationCenter = () => {
                             <button
                                 onClick={() => setFilter("unread")}
                                 className={`w-full py-2 px-4 rounded-lg text-left text-sm flex items-center ${filter === "unread"
-                                        ? "bg-indigo-100 text-indigo-800"
-                                        : "hover:bg-gray-100 text-gray-700"
+                                    ? "bg-indigo-100 text-indigo-800"
+                                    : "hover:bg-gray-100 text-gray-700"
                                     }`}
                             >
                                 <MdReadMore className="mr-3" />
@@ -234,8 +231,8 @@ const NotificationCenter = () => {
                             <button
                                 onClick={() => setFilter("leave_request")}
                                 className={`w-full py-2 px-4 rounded-lg text-left text-sm flex items-center ${filter === "leave_request"
-                                        ? "bg-indigo-100 text-indigo-800"
-                                        : "hover:bg-gray-100 text-gray-700"
+                                    ? "bg-indigo-100 text-indigo-800"
+                                    : "hover:bg-gray-100 text-gray-700"
                                     }`}
                             >
                                 <MdApproval className="mr-3" />
@@ -245,8 +242,8 @@ const NotificationCenter = () => {
                             <button
                                 onClick={() => setFilter("alerts")}
                                 className={`w-full py-2 px-4 rounded-lg text-left text-sm flex items-center ${filter === "alerts"
-                                        ? "bg-indigo-100 text-indigo-800"
-                                        : "hover:bg-gray-100 text-gray-700"
+                                    ? "bg-indigo-100 text-indigo-800"
+                                    : "hover:bg-gray-100 text-gray-700"
                                     }`}
                             >
                                 <MdWarning className="mr-3" />
@@ -256,8 +253,8 @@ const NotificationCenter = () => {
                             <button
                                 onClick={() => setFilter("system")}
                                 className={`w-full py-2 px-4 rounded-lg text-left text-sm flex items-center ${filter === "system"
-                                        ? "bg-indigo-100 text-indigo-800"
-                                        : "hover:bg-gray-100 text-gray-700"
+                                    ? "bg-indigo-100 text-indigo-800"
+                                    : "hover:bg-gray-100 text-gray-700"
                                     }`}
                             >
                                 <MdSettings className="mr-3" />
@@ -270,8 +267,8 @@ const NotificationCenter = () => {
                                 onClick={markAllAsRead}
                                 disabled={unreadCount === 0}
                                 className={`w-full py-2 px-4 rounded-lg text-center text-sm ${unreadCount > 0
-                                        ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                                        : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                    ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                                    : "bg-gray-200 text-gray-500 cursor-not-allowed"
                                     }`}
                             >
                                 <MdCheckCircle className="inline-block mr-2" />
@@ -303,8 +300,8 @@ const NotificationCenter = () => {
                                     <div
                                         key={notif.id}
                                         className={`p-4 rounded-xl border flex items-start transition duration-150 ${notif.isRead
-                                                ? "bg-white border-gray-200"
-                                                : "bg-indigo-50 border-indigo-200"
+                                            ? "bg-white border-gray-200"
+                                            : "bg-indigo-50 border-indigo-200"
                                             }`}
                                         data-aos="fade-up"
                                         data-aos-delay={index * 50}

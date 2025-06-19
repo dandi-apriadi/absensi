@@ -11,8 +11,7 @@ import {
     MdSave,
     MdInfo,
     MdCheckCircle,
-    MdSettings,
-    MdDevices
+    MdSettings
 } from "react-icons/md";
 
 // Dummy lecturer data
@@ -35,13 +34,12 @@ const ProfileSettings = () => {
         current: "",
         new: "",
         confirm: ""
-    });
-    const [notificationSettings, setNotificationSettings] = useState({
+    }); const [notificationSettings, setNotificationSettings] = useState({
         email: true,
         push: true,
         sms: false,
         attendanceAlert: true,
-        leaveRequests: true,
+        manualAttendance: true,
         systemUpdates: true,
         lowAttendance: true,
         weeklyReport: true
@@ -129,8 +127,8 @@ const ProfileSettings = () => {
                         <div className="flex flex-col">
                             <button
                                 className={`flex items-center py-3 px-4 ${activeTab === "profile"
-                                        ? "bg-indigo-50 text-indigo-700 border-l-4 border-indigo-700"
-                                        : "hover:bg-gray-50 text-gray-700"
+                                    ? "bg-indigo-50 text-indigo-700 border-l-4 border-indigo-700"
+                                    : "hover:bg-gray-50 text-gray-700"
                                     }`}
                                 onClick={() => setActiveTab("profile")}
                             >
@@ -139,33 +137,22 @@ const ProfileSettings = () => {
                             </button>
                             <button
                                 className={`flex items-center py-3 px-4 ${activeTab === "password"
-                                        ? "bg-indigo-50 text-indigo-700 border-l-4 border-indigo-700"
-                                        : "hover:bg-gray-50 text-gray-700"
+                                    ? "bg-indigo-50 text-indigo-700 border-l-4 border-indigo-700"
+                                    : "hover:bg-gray-50 text-gray-700"
                                     }`}
                                 onClick={() => setActiveTab("password")}
                             >
                                 <MdLock className="mr-2 h-5 w-5" />
                                 Keamanan & Password
-                            </button>
-                            <button
+                            </button>                            <button
                                 className={`flex items-center py-3 px-4 ${activeTab === "notifications"
-                                        ? "bg-indigo-50 text-indigo-700 border-l-4 border-indigo-700"
-                                        : "hover:bg-gray-50 text-gray-700"
+                                    ? "bg-indigo-50 text-indigo-700 border-l-4 border-indigo-700"
+                                    : "hover:bg-gray-50 text-gray-700"
                                     }`}
                                 onClick={() => setActiveTab("notifications")}
                             >
                                 <MdNotifications className="mr-2 h-5 w-5" />
                                 Notifikasi
-                            </button>
-                            <button
-                                className={`flex items-center py-3 px-4 ${activeTab === "devices"
-                                        ? "bg-indigo-50 text-indigo-700 border-l-4 border-indigo-700"
-                                        : "hover:bg-gray-50 text-gray-700"
-                                    }`}
-                                onClick={() => setActiveTab("devices")}
-                            >
-                                <MdDevices className="mr-2 h-5 w-5" />
-                                Perangkat Terhubung
                             </button>
                         </div>
                     </Card>
@@ -498,18 +485,16 @@ const ProfileSettings = () => {
                                             <label htmlFor="attendance-alert" className="ml-2 text-sm text-gray-700">
                                                 Peringatan absensi (ketika mahasiswa tidak hadir)
                                             </label>
-                                        </div>
-
-                                        <div className="flex items-center">
+                                        </div>                                        <div className="flex items-center">
                                             <input
-                                                id="leave-requests"
+                                                id="manual-attendance"
                                                 type="checkbox"
-                                                checked={notificationSettings.leaveRequests}
-                                                onChange={() => setNotificationSettings({ ...notificationSettings, leaveRequests: !notificationSettings.leaveRequests })}
+                                                checked={notificationSettings.manualAttendance}
+                                                onChange={() => setNotificationSettings({ ...notificationSettings, manualAttendance: !notificationSettings.manualAttendance })}
                                                 className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
                                             />
-                                            <label htmlFor="leave-requests" className="ml-2 text-sm text-gray-700">
-                                                Permintaan izin baru
+                                            <label htmlFor="manual-attendance" className="ml-2 text-sm text-gray-700">
+                                                Verifikasi absensi manual
                                             </label>
                                         </div>
 
@@ -570,63 +555,8 @@ const ProfileSettings = () => {
                                                 <MdSave className="mr-2" /> Simpan Perubahan
                                             </>
                                         )}
-                                    </button>
-                                </div>
+                                    </button>                                </div>
                             </form>
-                        </Card>
-                    )}
-
-                    {activeTab === "devices" && (
-                        <Card extra="p-5" data-aos="fade-left">
-                            <div className="mb-4">
-                                <h4 className="text-lg font-bold text-navy-700 dark:text-white">
-                                    Perangkat Terhubung
-                                </h4>
-                                <p className="text-sm text-gray-600">
-                                    Kelola perangkat yang sedang terhubung ke akun Anda
-                                </p>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="p-4 border border-gray-200 rounded-lg">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center">
-                                            <MdDevices className="h-5 w-5 text-gray-500 mr-2" />
-                                            <h6 className="text-sm font-medium text-gray-900">Asus ZenBook Pro (Browser Chrome)</h6>
-                                        </div>
-                                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Saat Ini</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs text-gray-500">
-                                        <span>Jakarta, Indonesia</span>
-                                        <span>Terakhir aktif: Saat ini</span>
-                                    </div>
-                                </div>
-
-                                <div className="p-4 border border-gray-200 rounded-lg">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center">
-                                            <MdDevices className="h-5 w-5 text-gray-500 mr-2" />
-                                            <h6 className="text-sm font-medium text-gray-900">iPhone 13 Pro (Aplikasi Mobile)</h6>
-                                        </div>
-                                        <button className="px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-800 hover:bg-red-200">
-                                            Hapus
-                                        </button>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs text-gray-500">
-                                        <span>Jakarta, Indonesia</span>
-                                        <span>Terakhir aktif: 3 jam yang lalu</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                                <div className="flex items-start">
-                                    <MdInfo className="text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
-                                    <p className="text-sm text-blue-700">
-                                        Jika Anda melihat perangkat yang tidak Anda kenali, segera hapus dan ubah password Anda untuk keamanan.
-                                    </p>
-                                </div>
-                            </div>
                         </Card>
                     )}
                 </div>
