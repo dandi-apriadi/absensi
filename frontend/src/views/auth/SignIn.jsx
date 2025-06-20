@@ -22,30 +22,40 @@ const SignIn = () => {
     return () => {
       dispatch(reset());
     };
-  }, [dispatch]);
-
-  // Handle authentication state
+  }, [dispatch]);  // Handle authentication state
   useEffect(() => {
-    // Check if login was successful and user exists
-    if (isSuccess && user?.user) {
-      const userData = user.user;
+    console.log("Auth state changed:", { isSuccess, isError, user, message });
 
-      console.log("Login successful:", userData.role);
+    // Check if login was successful and user exists
+    if (isSuccess && user) {
+      console.log("Login successful:", user);
+      console.log("User role:", user.role);
 
       // Map roles to their respective dashboard routes
       const roleRoutes = {
-        "super_admin": "/admin/default",
+        "super-admin": "/admin/default",
         "lecturer": "/lecturer/default",
         "student": "/student/default"
       };
 
-      const route = roleRoutes[userData.role] || "/admin/default";
+      const route = roleRoutes[user.role] || "/admin/default";
+      console.log("Navigating to:", route);
+
+      // Navigate first, then reset
       navigate(route);
-      dispatch(reset()); // Reset state after navigation
+
+      // Reset after a small delay to ensure navigation completes
+      setTimeout(() => {
+        dispatch(reset());
+      }, 100);
     }
 
     if (isError) {
-      dispatch(reset()); // Reset state after error
+      console.log("Login error:", message);
+      // Reset state after showing error
+      setTimeout(() => {
+        dispatch(reset());
+      }, 100);
     }
   }, [isSuccess, isError, user, message, navigate, dispatch]);
 

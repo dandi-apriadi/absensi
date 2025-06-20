@@ -15,13 +15,20 @@ export default function SuperAdmin(props) {
   const [currentRoute, setCurrentRoute] = React.useState("Main Dashboard");
   const { isError } = useSelector((state => state.auth));
   const [page, setPage] = useState("");
-
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const { user } = useSelector((state) => state.auth);
 
   useEffect(() => {
-    dispatch(getMe());
-  }, [dispatch]);
+    // Only fetch user data if we don't have it yet
+    if (!user) {
+      dispatch(getMe()).catch((error) => {
+        console.error("Failed to fetch user data:", error);
+        // If user data fetch fails, redirect to login
+        navigate("/auth/sign-in");
+      });
+    }
+  }, [dispatch, user, navigate]);
 
   useEffect(() => {
     const currentPath = location.pathname.split("/").pop();

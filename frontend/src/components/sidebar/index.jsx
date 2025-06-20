@@ -91,12 +91,17 @@ const Sidebar = ({ onClose }) => {
       }
     }
   }, [sidebarOpen]);
-
-  // Fetch user data if not available
+  // Fetch user data if not available and user is potentially logged in
   useEffect(() => {
-    if (!user) {
+    // Only try to fetch user data if we don't have user data and we might be logged in
+    // (e.g., page refresh after login)
+    if (!user && window.location.pathname !== '/auth/sign-in' && !window.location.pathname.startsWith('/auth/')) {
       dispatch(getMe()).catch((error) => {
         console.error("Failed to fetch user data:", error);
+        // If getMe fails, user might not be logged in, redirect to login
+        if (error.includes('404') || error.includes('401')) {
+          window.location.href = '/auth/sign-in';
+        }
       });
     }
   }, [dispatch, user]);
@@ -222,10 +227,9 @@ const Sidebar = ({ onClose }) => {
                   {/* Clean User Details */}
                   <div className="flex-1 min-w-0">
                     {/* User Name Row */}
-                    <div className="flex items-center space-x-2 mb-1">
-                      <h3 className="font-semibold text-gray-900 dark:text-white text-sm truncate">
-                        {user?.fullname && user.fullname !== '-' ? user.fullname : user?.email?.split('@')[0] || 'Guest User'}
-                      </h3>
+                    <div className="flex items-center space-x-2 mb-1">                      <h3 className="font-semibold text-gray-900 dark:text-white text-sm truncate">
+                      {user?.name && user.name !== '-' ? user.name : user?.email?.split('@')[0] || 'Guest User'}
+                    </h3>
                       {user?.verified && (
                         <div className="w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center">
                           <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">

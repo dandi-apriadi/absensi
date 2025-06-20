@@ -37,10 +37,10 @@ const initialState = {
 // Thunk untuk mendapatkan data pengguna
 export const getMe = createAsyncThunk("user/getMe", async (_, thunkAPI) => {
     try {
-        const response = await api.get("/api/shared/me");
+        const response = await api.get("/api/auth/me");
         return response.data;
     } catch (error) {
-        const message = error?.response?.data?.msg || "Something went wrong!";
+        const message = error?.response?.data?.message || error?.response?.data?.msg || "Something went wrong!";
         return thunkAPI.rejectWithValue(message);
     }
 });
@@ -48,10 +48,10 @@ export const getMe = createAsyncThunk("user/getMe", async (_, thunkAPI) => {
 // Thunk untuk logout pengguna
 export const logoutUser = createAsyncThunk("user/logoutUser", async (_, thunkAPI) => {
     try {
-        await api.delete("/api/shared/logout");
+        await api.delete("/api/auth/logout");
         return null;
     } catch (error) {
-        const message = error?.response?.data?.msg || "Something went wrong!";
+        const message = error?.response?.data?.message || error?.response?.data?.msg || "Something went wrong!";
         return thunkAPI.rejectWithValue(message);
     }
 });
@@ -59,10 +59,10 @@ export const logoutUser = createAsyncThunk("user/logoutUser", async (_, thunkAPI
 // Thunk untuk login pengguna
 export const loginUser = createAsyncThunk("user/loginUser", async (user, thunkAPI) => {
     try {
-        const response = await api.post("/api/shared/login", user);
+        const response = await api.post("/api/auth/login", user);
         return response.data;
     } catch (error) {
-        const message = error?.response?.data?.msg || "Something went wrong!";
+        const message = error?.response?.data?.message || error?.response?.data?.msg || "Something went wrong!";
         return thunkAPI.rejectWithValue(message);
     }
 });
@@ -70,10 +70,10 @@ export const loginUser = createAsyncThunk("user/loginUser", async (user, thunkAP
 // Thunk untuk register pengguna
 export const registerUser = createAsyncThunk("user/register", async (userData, thunkAPI) => {
     try {
-        const response = await api.post("/api/shared/register", userData);
+        const response = await api.post("/api/auth/register", userData);
         return response.data;
     } catch (error) {
-        const message = error?.response?.data?.msg || "Something went wrong!";
+        const message = error?.response?.data?.message || error?.response?.data?.msg || "Something went wrong!";
         return thunkAPI.rejectWithValue(message);
     }
 });
@@ -114,17 +114,18 @@ export const authSlice = createSlice({
             // Login User
             .addCase(loginUser.pending, (state) => {
                 state.isLoading = true;
-            })
-            .addCase(loginUser.fulfilled, (state, action) => {
+            }).addCase(loginUser.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
                 state.isError = false;
-                state.user = action.payload;
+                state.user = action.payload.data?.user || action.payload.user || action.payload;
+                state.message = action.payload.message || "Login successful";
             })
             .addCase(loginUser.rejected, (state, action) => {
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;
+                state.user = null;
             })
             // Register User
             .addCase(registerUser.pending, (state) => {
@@ -133,12 +134,15 @@ export const authSlice = createSlice({
             .addCase(registerUser.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
-                state.user = action.payload;
+                state.isError = false;
+                state.user = action.payload.data?.user || action.payload.user || action.payload;
+                state.message = action.payload.message || "Registration successful";
             })
             .addCase(registerUser.rejected, (state, action) => {
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;
+                state.user = null;
             })
             // Get Me
             .addCase(getMe.pending, (state) => {
@@ -147,26 +151,31 @@ export const authSlice = createSlice({
             .addCase(getMe.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
-                state.user = action.payload;
+                state.isError = false;
+                state.user = action.payload.data?.user || action.payload.user || action.payload;
             })
             .addCase(getMe.rejected, (state, action) => {
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;
-            })
-            // Logout User
+                state.user = null;
+            })            // Logout User
             .addCase(logoutUser.pending, (state) => {
                 state.isLoading = true;
             })
-            .addCase(logoutUser.fulfilled, (state) => {
+            .addCase(logoutUser.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
+                state.isError = false;
                 state.user = null; // Clear user data on logout
+                state.message = "Logout successful";
             })
             .addCase(logoutUser.rejected, (state, action) => {
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;
+                // Still clear user data even if logout request fails
+                state.user = null;
             });
     },
 });
