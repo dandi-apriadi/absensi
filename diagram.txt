@@ -1,0 +1,292 @@
+// Database Diagram for Absensi System - Unified Users Structure
+// Use this code at dbdiagram.io
+
+// ===============================================
+// CORE USER MANAGEMENT (Center)
+// ===============================================
+Table users {
+  id int [pk, increment]
+  user_id varchar(20) [unique, not null, note: 'NIM/NIP/Admin ID']
+  email varchar(100) [unique, not null]
+  password varchar(255) [not null]
+  full_name varchar(100) [not null]
+  role enum('student','lecturer','super-admin') [not null]
+  status enum('active','inactive','suspended') [default: 'active']
+  phone varchar(15)
+  address text
+  profile_picture varchar(255)
+  last_login datetime
+  
+  // Student fields
+  program_study varchar(100)
+  semester int
+  academic_year varchar(10)
+  entrance_year int
+  gpa decimal(3,2)
+  guardian_name varchar(100)
+  guardian_phone varchar(15)
+  
+  // Lecturer fields
+  department varchar(100)
+  position varchar(50)
+  specialization text
+  education_level varchar(10)
+  office_room varchar(50)
+  employee_id varchar(20)
+  
+  // Admin fields
+  admin_level enum('system_admin','faculty_admin','it_admin')
+  permissions json
+  department_access json
+  
+  // Common fields
+  birth_date date
+  gender enum('male','female')
+  emergency_contact varchar(100)
+  emergency_phone varchar(15)
+  notes text
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+// ===============================================
+// COURSE MANAGEMENT (Left Side)
+// ===============================================
+TableGroup course_group {
+  courses
+  course_classes
+  student_enrollments
+}
+
+Table courses {
+  id int [pk, increment]
+  course_code varchar(20) [unique, not null]
+  course_name varchar(150) [not null]
+  credits int [not null]
+  semester int [not null]
+  program_study varchar(100) [not null]
+  description text
+  prerequisites json
+  status enum('active','inactive') [default: 'active']
+  created_at datetime [not null]
+}
+
+Table course_classes {
+  id int [pk, increment]
+  course_id int [ref: > courses.id]
+  lecturer_id int [ref: > users.id]
+  class_name varchar(10) [not null]
+  academic_year varchar(10) [not null]
+  semester_period enum('ganjil','genap') [not null]
+  max_students int [default: 40]
+  room_id int [ref: > rooms.id]
+  schedule json [not null]
+  status enum('active','completed','cancelled') [default: 'active']
+  created_at datetime [not null]
+}
+
+Table student_enrollments {
+  id int [pk, increment]
+  student_id int [ref: > users.id]
+  class_id int [ref: > course_classes.id]
+  enrollment_date datetime
+  status enum('enrolled','dropped','completed') [default: 'enrolled']
+  final_grade varchar(2)
+  final_score decimal(5,2)
+}
+
+// ===============================================
+// ATTENDANCE SYSTEM (Right Side)
+// ===============================================
+TableGroup attendance_group {
+  attendance_sessions
+  student_attendances
+}
+
+Table attendance_sessions {
+  id int [pk, increment]
+  class_id int [ref: > course_classes.id]
+  session_number int [not null]
+  session_date date [not null]
+  start_time time [not null]
+  end_time time [not null]
+  room_id int [ref: > rooms.id]
+  topic varchar(200)
+  session_type enum('regular','makeup','exam','quiz') [default: 'regular']
+  attendance_method enum('face_recognition','qr_code','manual','mixed') [default: 'face_recognition']
+  qr_code text
+  qr_expire_time datetime
+  attendance_open_time datetime
+  attendance_close_time datetime
+  status enum('scheduled','ongoing','completed','cancelled') [default: 'scheduled']
+  notes text
+  created_by int [ref: > users.id]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table student_attendances {
+  id int [pk, increment]
+  session_id int [ref: > attendance_sessions.id]
+  student_id int [ref: > users.id]
+  status enum('present','absent','late','excused','sick') [not null]
+  check_in_time datetime
+  check_out_time datetime
+  attendance_method enum('face_recognition','qr_code','manual')
+  confidence_score decimal(5,4)
+  location_lat decimal(10,8)
+  location_lng decimal(11,8)
+  notes text
+  verified_by int [ref: > users.id]
+  verified_at datetime
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+// ===============================================
+// ROOM & ACCESS CONTROL (Top Left)
+// ===============================================
+TableGroup room_group {
+  rooms
+  door_access_logs
+  room_access_permissions
+}
+
+Table rooms {
+  id int [pk, increment]
+  room_code varchar(20) [unique, not null]
+  room_name varchar(100) [not null]
+  building varchar(50) [not null]
+  floor int [not null]
+  capacity int [not null]
+  room_type enum('classroom','laboratory','auditorium','meeting_room','office') [not null]
+  facilities json
+  has_face_recognition boolean [default: false]
+  door_access_code varchar(50)
+  status enum('available','maintenance','unavailable') [default: 'available']
+  created_at datetime [not null]
+}
+
+Table door_access_logs {
+  id int [pk, increment]
+  room_id int [ref: > rooms.id]
+  user_id int [ref: > users.id]
+  access_type enum('face_recognition','keycard','manual_override','emergency') [not null]
+  access_status enum('granted','denied','forced') [not null]
+  confidence_score decimal(5,4)
+  reason varchar(200)
+  accessed_at datetime
+  session_id int [ref: > attendance_sessions.id]
+}
+
+Table room_access_permissions {
+  id int [pk, increment]
+  user_id int [ref: > users.id]
+  room_id int [ref: > rooms.id]
+  permission_type enum('full_access','scheduled_access','limited_access') [not null]
+  start_date date
+  end_date date
+  time_restrictions json
+  granted_by int [ref: > users.id]
+  is_active boolean [default: true]
+  created_at datetime [not null]
+}
+
+// ===============================================
+// FACE RECOGNITION (Top Right)
+// ===============================================
+TableGroup face_group {
+  face_datasets
+  face_recognition_logs
+}
+
+Table face_datasets {
+  id int [pk, increment]
+  user_id int [ref: > users.id]
+  image_path varchar(255) [not null]
+  image_name varchar(100) [not null]
+  encoding_data json
+  image_quality enum('excellent','good','fair','poor')
+  face_landmarks json
+  is_primary boolean [default: false]
+  verification_status enum('pending','approved','rejected') [default: 'pending']
+  verified_by int [ref: > users.id]
+  verified_at datetime
+  upload_method enum('single_upload','bulk_upload','camera_capture') [not null]
+  created_at datetime [not null]
+}
+
+Table face_recognition_logs {
+  id int [pk, increment]
+  session_id int [ref: > attendance_sessions.id]
+  recognized_user_id int [ref: > users.id]
+  confidence_score decimal(5,4) [not null]
+  captured_image_path varchar(255)
+  recognition_status enum('success','failed','low_confidence','no_face_detected') [not null]
+  processing_time int
+  camera_id varchar(50)
+  room_id int [ref: > rooms.id]
+  created_at datetime [not null]
+}
+
+// ===============================================
+// SYSTEM MANAGEMENT (Bottom)
+// ===============================================
+TableGroup system_group {
+  notifications
+  system_logs
+  system_settings
+  sessions
+}
+
+Table notifications {
+  id int [pk, increment]
+  recipient_id int [ref: > users.id]
+  sender_id int [ref: > users.id]
+  type enum('attendance_reminder','session_cancelled','session_rescheduled','low_attendance_warning','face_dataset_approved','face_dataset_rejected','system_maintenance','security_alert','grade_updated','general_announcement') [not null]
+  title varchar(200) [not null]
+  message text [not null]
+  data json
+  priority enum('low','normal','high','urgent') [default: 'normal']
+  is_read boolean [default: false]
+  read_at datetime
+  delivery_method json
+  scheduled_at datetime
+  expires_at datetime
+  created_at datetime [not null]
+}
+
+Table system_logs {
+  id int [pk, increment]
+  user_id int [ref: > users.id]
+  action varchar(100) [not null]
+  table_name varchar(50)
+  record_id int
+  old_values json
+  new_values json
+  ip_address varchar(45)
+  user_agent text
+  session_id varchar(128)
+  severity enum('info','warning','error','critical') [default: 'info']
+  created_at datetime [not null]
+}
+
+Table system_settings {
+  id int [pk, increment]
+  setting_key varchar(100) [unique, not null]
+  setting_value text
+  setting_type enum('string','integer','boolean','json') [not null]
+  category varchar(50) [not null]
+  description text
+  is_public boolean [default: false]
+  updated_by int [ref: > users.id]
+  updated_at datetime [not null]
+}
+
+Table sessions {
+  sid varchar(36) [pk]
+  expires datetime
+  data text
+  createdAt datetime [not null]
+  updatedAt datetime [not null]
+}

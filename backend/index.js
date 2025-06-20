@@ -63,27 +63,37 @@ app.use(
 const initDatabase = async () => {
     try {
         await db.authenticate();
-        console.log('Database connection established.');
+        console.log('✅ Database connection established.');
 
-        // Drop existing indexes
-        await db.query('SET FOREIGN_KEY_CHECKS = 0');
-        try {
-            await db.query('DROP INDEX users_email_unique ON users');
-        } catch (err) { } // Ignore if index doesn't exist
+        // Import all models to ensure they are registered
+        console.log('📋 Loading models...');
+        await import('./models/index.js');
 
-        // Sync with minimal configuration
+        console.log('🔄 Synchronizing database...');
+
+        // Use force: false and alter: false for production safety
+        // If you need to reset database, run: node resetDatabase.js
         await db.sync({
             force: false,
-            alter: true,
+            alter: false,
             hooks: false
         });
 
-        await db.query('SET FOREIGN_KEY_CHECKS = 1');
-        console.log('Database synchronized successfully');
+        console.log('✅ Database synchronized successfully');
         return true;
     } catch (error) {
-        console.error('Database initialization error:', error);
-        await db.query('SET FOREIGN_KEY_CHECKS = 1');
+        console.error('❌ Database initialization error:', error.name, error.message);
+
+        if (error.name === 'SequelizeDatabaseError' && error.original?.code === 'ER_WRONG_AUTO_KEY') {
+            console.log('');
+            console.log('🔧 SOLUTION: This error occurs when there are conflicting auto_increment columns.');
+            console.log('   Run the following command to reset your database:');
+            console.log('   node resetDatabase.js');
+            console.log('');
+            console.log('   Then run your application again.');
+            console.log('');
+        }
+
         return false;
     }
 };
