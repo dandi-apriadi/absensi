@@ -1,0 +1,347 @@
+# TODOLIST PRIORITAS PENGEMBANGAN SISTEM ABSENSI
+## Analisis Keterkaitan Frontend-Backend & Roadmap Implementasi
+
+================================================================================
+## 🎯 RINGKASAN ANALISIS PROJECT
+
+### Backend Status: ✅ LENGKAP (95%)
+- Models: ✅ Complete (7 files)
+- Controllers: ✅ Complete (15+ controllers)
+- Routes: ✅ Complete (9 route files)
+- Middleware: ✅ Complete
+- Database: ✅ Complete with relationships
+
+### Frontend Status: ⚠️ PARSIAL (40%)
+- Routes: ✅ Complete (3 role-based routes)
+- Components: ⚠️ Declared but needs implementation
+- Views: ⚠️ Folder structure ready, components need development
+- State Management: ✅ Redux setup ready
+
+================================================================================
+## 🚀 ROADMAP PRIORITAS IMPLEMENTASI
+
+### FASE 1: FOUNDATION & AUTHENTICATION (PRIORITAS TINGGI)
+**Timeline: Week 1-2**
+
+#### 1.1 Authentication System ⭐⭐⭐⭐⭐
+**Backend:** ✅ READY
+- Routes: `/api/auth/*` (authRoutes.js)
+- Controller: `authController.js`
+- Models: `Users` (userManagementModel.js)
+
+**Frontend:** ❌ PERLU IMPLEMENTASI
+```
+Priority: CRITICAL
+Components Needed:
+├── views/auth/SignIn.jsx
+├── views/auth/Logout.jsx
+├── components/security/AuthGuard.jsx
+└── store/slices/authSlice.js
+
+Integration Points:
+- Login: POST /api/auth/login
+- Logout: POST /api/auth/logout
+- Session Check: GET /api/auth/me
+- Role Verification: middleware AuthUser.js
+```
+
+#### 1.2 User Management (Super Admin) ⭐⭐⭐⭐
+**Backend:** ✅ READY
+- Routes: `/api/admin/*` (userManagementRoutes.js)
+- Controller: `userManagementController.js`
+- Models: `Users`
+
+**Frontend:** ❌ PERLU IMPLEMENTASI
+```
+Priority: HIGH
+Components Needed:
+├── views/super-admin/user-management/index.jsx
+├── views/super-admin/user-management/components/
+│   ├── AddUser.jsx
+│   ├── EditUser.jsx
+│   └── UsersList.jsx
+└── components/forms/UserForm.jsx
+
+Integration Points:
+- Get Users: GET /api/admin/users
+- Add User: POST /api/admin/users
+- Update User: PUT /api/admin/users/:id
+- Delete User: DELETE /api/admin/users/:id
+```
+
+================================================================================
+### FASE 2: CORE FUNCTIONALITY (PRIORITAS SEDANG-TINGGI)
+**Timeline: Week 3-4**
+
+#### 2.1 Dashboard System ⭐⭐⭐⭐
+**Backend:** ✅ READY
+- Routes: `/api/dashboard/*` (dashboardRoutes.js)
+- Controller: `dashboardController.js` (shared)
+- Models: Multiple (Users, Courses, Attendance)
+
+**Frontend:** ❌ PERLU IMPLEMENTASI
+```
+Priority: HIGH
+Components Needed:
+├── views/super-admin/dashboard/index.jsx
+├── views/lecturer/dashboard/index.jsx
+├── views/student/dashboard/index.jsx
+└── components/widget/StatCard.jsx
+
+Integration Points:
+- Super Admin: GET /api/dashboard/admin
+- Lecturer: GET /api/dashboard/lecturer
+- Student: GET /api/dashboard/student
+```
+
+#### 2.2 Course Management ⭐⭐⭐⭐
+**Backend:** ✅ READY
+- Routes: `/api/courses/*` (courseRoutes.js)
+- Controller: `courseController.js`
+- Models: `Courses`, `CourseClasses`, `StudentEnrollments`
+
+**Frontend:** ❌ PERLU IMPLEMENTASI
+```
+Priority: HIGH
+Components Needed:
+├── views/lecturer/courses/index.jsx
+├── views/student/courses/index.jsx (CourseSchedule)
+└── components/course/CourseCard.jsx
+
+Integration Points:
+- Get Courses: GET /api/coursesv
+- Create Course: POST /api/courses
+- Enroll Student: POST /api/courses/:id/enroll
+- Get Schedule: GET /api/courses/schedule
+```
+
+#### 2.3 Attendance Management ⭐⭐⭐⭐⭐
+**Backend:** ✅ READY
+- Routes: `/api/attendance/*` (attendanceRoutes.js)
+- Controller: `attendanceController.js`
+- Models: `AttendanceSessions`, `StudentAttendances`
+
+**Frontend:** ❌ PERLU IMPLEMENTASI
+```
+Priority: CRITICAL
+Components Needed:
+├── views/lecturer/attendance/
+│   ├── index.jsx (AttendanceManagement)
+│   └── components/
+│       ├── TakeAttendance.jsx
+│       ├── AttendanceHistory.jsx
+│       └── ManualAttendance.jsx
+├── views/student/attendance/index.jsx (MyAttendance)
+└── views/super-admin/attendance/
+    ├── index.jsx
+    └── components/
+        ├── AttendanceHistory.jsx
+        └── ManualVerification.jsx
+
+Integration Points:
+- Start Session: POST /api/attendance/sessions
+- Take Attendance: POST /api/attendance/record
+- Get History: GET /api/attendance/history
+- Manual Override: PUT /api/attendance/manual
+```
+
+================================================================================
+### FASE 3: ADVANCED FEATURES (PRIORITAS SEDANG)
+**Timeline: Week 5-6**
+
+#### 3.1 Face Dataset Management ⭐⭐⭐
+**Backend:** ✅ READY
+- Controller: `faceDatasetController.js`
+- Models: `FaceDatasets`, `FaceRecognitionLogs`
+
+**Frontend:** ❌ PERLU IMPLEMENTASI
+```
+Priority: MEDIUM
+Components Needed:
+├── views/super-admin/face-dataset/
+│   ├── index.jsx
+│   └── components/
+│       ├── UploadDataset.jsx
+│       ├── ManageDataset.jsx
+│       └── VerifyDataset.jsx
+└── components/upload/FileUploader.jsx
+
+Integration Points:
+- Upload Dataset: POST /api/face-dataset/upload
+- Verify Dataset: PUT /api/face-dataset/:id/verify
+- Get Datasets: GET /api/face-dataset
+```
+
+#### 3.2 Room Management ⭐⭐⭐
+**Backend:** ✅ READY
+- Routes: `/api/rooms/*` (roomRoutes.js)
+- Controller: `roomController.js`
+- Models: `Rooms`, `RoomAccessPermissions`
+
+**Frontend:** ❌ PERLU IMPLEMENTASI
+```
+Priority: MEDIUM
+Components Needed:
+├── views/super-admin/room-access/
+│   ├── index.jsx
+│   └── components/DoorSettings.jsx
+└── components/room/RoomCard.jsx
+
+Integration Points:
+- Get Rooms: GET /api/rooms
+- Room Access: POST /api/rooms/:id/access
+- Door Control: POST /api/rooms/:id/door
+```
+
+#### 3.3 Notification System ⭐⭐⭐
+**Backend:** ✅ READY
+- Routes: `/api/notifications/*` (notificationRoutes.js)
+- Controller: `notificationController.js`
+- Models: `Notifications`
+
+**Frontend:** ❌ PERLU IMPLEMENTASI
+```
+Priority: MEDIUM
+Components Needed:
+├── views/*/notifications/NotificationCenter.jsx (all roles)
+├── components/notifications/NotificationBell.jsx
+└── components/notifications/NotificationItem.jsx
+
+Integration Points:
+- Get Notifications: GET /api/notifications
+- Mark Read: PUT /api/notifications/:id/read
+- Send Notification: POST /api/notifications
+```
+
+================================================================================
+### FASE 4: REPORTING & ANALYTICS (PRIORITAS RENDAH)
+**Timeline: Week 7-8**
+
+#### 4.1 Reporting System ⭐⭐
+**Backend:** ✅ READY
+- Routes: `/api/reports/*` (reportRoutes.js)
+- Controller: `reportController.js`
+
+**Frontend:** ❌ PERLU IMPLEMENTASI
+```
+Priority: LOW
+Components Needed:
+├── views/lecturer/analytics/AttendancePatterns.jsx
+└── components/charts/AttendanceChart.jsx
+
+Integration Points:
+- Attendance Report: GET /api/reports/attendance
+- Student Report: GET /api/reports/student/:id
+- Export Data: GET /api/reports/export
+```
+
+#### 4.2 Profile Management ⭐⭐
+**Backend:** ✅ READY (via authController.js)
+
+**Frontend:** ❌ PERLU IMPLEMENTASI
+```
+Priority: LOW
+Components Needed:
+├── views/*/profile/*Profile.jsx (all roles)
+└── views/lecturer/settings/index.jsx (ProfileSettings)
+
+Integration Points:
+- Get Profile: GET /api/auth/profile
+- Update Profile: PUT /api/auth/profile
+```
+
+================================================================================
+## 📋 CHECKLIST IMPLEMENTASI PER ROLE
+
+### SUPER ADMIN (7 fitur utama)
+```
+□ Dashboard (/admin/default)
+□ User Management (/admin/user-management)
+  □ Add User (/admin/add-user)
+  □ Edit User (/admin/edit-user)
+  □ Users List (/admin/users-list)
+□ Face Dataset Management (/admin/face-dataset)
+  □ Upload Dataset (/admin/upload-dataset)
+  □ Manage Dataset (/admin/manage-dataset)
+  □ Verify Dataset (/admin/verify-dataset)
+□ Attendance Management (/admin/attendance)
+  □ Attendance History (/admin/attendance-history)
+  □ Manual Verification (/admin/manual-verification)
+□ Room Access (/admin/room-access)
+  □ Door Settings (/admin/door-settings)
+□ Notifications (/admin/notifications)
+□ Profile (/admin/profile)
+```
+
+### LECTURER (11 fitur utama)
+```
+□ Dashboard (/lecturer/default)
+□ Course Management (/lecturer/courses)
+□ Attendance Management (/lecturer/attendance)
+  □ Take Attendance (/lecturer/take-attendance)
+  □ Attendance History (/lecturer/attendance-history)
+  □ Manual Attendance (/lecturer/manual-attendance)
+□ Student Performance (/lecturer/students)
+□ Analytics (/lecturer/attendance-patterns)
+□ Session Management (/lecturer/sessions)
+□ Notifications (/lecturer/notifications)
+□ Profile (/lecturer/profile)
+□ Settings (/lecturer/settings)
+```
+
+### STUDENT (6 fitur utama)
+```
+□ Dashboard (/student/default)
+□ My Attendance (/student/my-attendance)
+□ Course Schedule (/student/schedule)
+□ Profile (/student/profile)
+□ Notifications (/student/notifications)
+```
+
+================================================================================
+## 🔧 TECHNICAL INTEGRATION NOTES
+
+### API Endpoints Mapping:
+```
+Authentication: /api/auth/*
+User Management: /api/admin/*
+Dashboard: /api/dashboard/*
+Courses: /api/courses/*
+Attendance: /api/attendance/*
+Rooms: /api/rooms/*
+Notifications: /api/notifications/*
+Reports: /api/reports/*
+System: /api/system/*
+```
+
+### Key Models Relationships:
+```
+Users → FaceDatasets (1:many)
+Users → StudentEnrollments (1:many)
+Courses → CourseClasses (1:many)
+CourseClasses → AttendanceSessions (1:many)
+AttendanceSessions → StudentAttendances (1:many)
+Rooms → RoomAccessPermissions (1:many)
+```
+
+### Frontend State Management:
+```
+store/slices/
+├── authSlice.js (user, token, role)
+├── courseSlice.js (courses, enrollments)
+├── attendanceSlice.js (sessions, records)
+├── notificationSlice.js (notifications, count)
+└── userSlice.js (user management)
+```
+
+================================================================================
+## 🎯 REKOMENDASI URUTAN DEVELOPMENT
+
+1. **MULAI:** Authentication + Super Admin User Management
+2. **LANJUT:** Dashboard untuk semua role
+3. **PRIORITAS:** Attendance System (Take Attendance → History → Manual)
+4. **KEMUDIAN:** Course Management
+5. **SELESAIKAN:** Face Dataset, Room Access, Notifications
+6. **TERAKHIR:** Reporting & Analytics
+
+**Estimasi Total: 8 minggu untuk implementasi lengkap**
