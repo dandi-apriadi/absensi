@@ -20,14 +20,9 @@ const User = db.define('users', {
         defaultValue: '-'
     },
     role: {
-        type: DataTypes.ENUM('super-admin', 'lecturer', 'student'),
+        type: DataTypes.ENUM('super-admin', 'student'),
         allowNull: false,
         defaultValue: 'student'
-    },
-    profile_picture: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        defaultValue: 'default-profile.png'
     },
     gender: {
         type: DataTypes.ENUM('male', 'female'),
@@ -48,79 +43,11 @@ const User = db.define('users', {
         type: DataTypes.STRING,
         allowNull: false
     },
-    status: {
-        type: DataTypes.ENUM('active', 'inactive', 'banned'),
-        allowNull: false,
-        defaultValue: 'active'
-    },
-    verified: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: false
-    },
-    token: {
-        type: DataTypes.STRING,
-        defaultValue: () => uuidv4(),
-        allowNull: true
-    },
     // Student specific fields
     student_id: {
         type: DataTypes.STRING,
         allowNull: true,
         unique: true
-    },
-    faculty: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    major: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    entry_year: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        validate: {
-            isNumeric: true
-        }
-    },
-    // Lecturer specific fields
-    employee_id: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    department: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    // Contact information
-    phone_number: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    // Face recognition specific fields
-    face_registered: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: false
-    },
-    face_dataset_status: {
-        type: DataTypes.ENUM('pending', 'complete', 'rejected', 'needs_update'),
-        allowNull: false,
-        defaultValue: 'pending'
-    },
-    face_dataset_last_updated: {
-        type: DataTypes.DATE,
-        allowNull: true
-    },
-    // Tracking fields
-    last_login: {
-        type: DataTypes.DATE,
-        allowNull: true,
-        get() {
-            const value = this.getDataValue('last_login');
-            return value ? moment(value).format('D MMMM, YYYY, h:mm A') : null;
-        }
     },
     created_at: {
         type: DataTypes.DATE,
@@ -151,15 +78,6 @@ const User = db.define('users', {
             fields: ['student_id'],
             where: {
                 student_id: {
-                    [Sequelize.Op.ne]: null
-                }
-            }
-        },
-        {
-            unique: true,
-            fields: ['employee_id'],
-            where: {
-                employee_id: {
                     [Sequelize.Op.ne]: null
                 }
             }

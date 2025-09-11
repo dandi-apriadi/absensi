@@ -2,7 +2,7 @@ import { Sequelize } from "sequelize";
 import db from "../config/Database.js";
 
 // Import all models
-import { Users } from "./userManagementModel.js";
+import { User } from "./userModel.js";
 import { Courses, CourseClasses, StudentEnrollments } from "./courseManagementModel.js";
 import { AttendanceSessions, StudentAttendances, FaceDatasets, FaceRecognitionLogs } from "./attendanceModel.js";
 import { Notifications, DoorAccessLogs } from "./systemModel.js";
@@ -48,9 +48,9 @@ const syncModels = async (options = {}) => {
  * @returns {Object} User with role details
  */
 const getUserWithRoleDetails = async (userId) => {
-    const user = await Users.findByPk(userId);
+    const user = await User.findByPk(userId);
     if (user) {
-        return user.getRoleSpecificData();
+        return user.toJSON();
     }
     return null;
 };
@@ -66,7 +66,7 @@ const getCourseClassDetails = async (classId) => {
     if (courseClass) {
         // Manual joins since we removed associations (single room system)
         const course = await Courses.findByPk(courseClass.course_id);
-        const lecturer = await Users.findByPk(courseClass.lecturer_id);
+        const lecturer = await User.findByPk(courseClass.lecturer_id);
         const enrollments = await StudentEnrollments.findAll({
             where: { class_id: classId }
         });
@@ -94,7 +94,7 @@ const getAttendanceSessionDetails = async (sessionId) => {
         // Manual joins since we removed associations (single room system)
         const classInfo = await CourseClasses.findByPk(session.class_id);
         const course = classInfo ? await Courses.findByPk(classInfo.course_id) : null;
-        const creator = await Users.findByPk(session.created_by);
+        const creator = await User.findByPk(session.created_by);
         const attendances = await StudentAttendances.findAll({
             where: { session_id: sessionId }
         });
@@ -121,7 +121,7 @@ export {
     db,
 
     // User Management Models (Unified)
-    Users,
+    User as Users,
 
     // Course Management Models
     Courses,
@@ -149,7 +149,7 @@ export {
 export default {
     db,
     models: {
-        Users,
+        Users: User,
         Courses,
         CourseClasses,
         StudentEnrollments,

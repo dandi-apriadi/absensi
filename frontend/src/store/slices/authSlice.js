@@ -2,7 +2,7 @@ import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
 // Get base URL from environment variable
-const BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:5000";
+const BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:5001";
 
 const api = axios.create({
     baseURL: BASE_URL,
@@ -26,7 +26,7 @@ const getInitialSidebarState = () => {
 
 const initialState = {
     user: null,
-    baseURL: api, // Use the axios instance instead of hardcoded URL
+    baseURL: BASE_URL, // Use the string URL instead of axios instance
     microPage: "unset", // default value of microPage
     homepage: "unset",
     isError: false,
@@ -85,7 +85,16 @@ export const authSlice = createSlice({
     name: "auth",
     initialState,
     reducers: {
-        reset: (state) => initialState,
+        reset: (state) => {
+            state.user = null;
+            state.microPage = "unset";
+            state.homepage = "unset";
+            state.isError = false;
+            state.isSuccess = false;
+            state.isLoading = false;
+            state.message = "";
+            // Keep sidebarOpen and baseURL as they are
+        },
         setMicroPage: (state, action) => {
             state.microPage = action.payload;
         },        // Sidebar actions with localStorage persistence
