@@ -7,7 +7,6 @@ import { SidebarLinks } from "./components/Links";
 
 // Route imports
 import routesAdmin from "../../routes/routes-super-admin.js";
-import routesLecture from "../../routes/routes-lecturer.js";
 import routesStudent from "../../routes/routes-student.js";
 
 // Assets
@@ -123,7 +122,6 @@ const Sidebar = ({ onClose }) => {
     try {
       const roleRoutes = {
         'super-admin': routesAdmin,
-        'lecturer': routesLecture,
         'student': routesStudent,
       };
 
@@ -242,9 +240,7 @@ const Sidebar = ({ onClose }) => {
                     {/* Simple Role Badge */}
                     <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${user?.role === 'super-admin'
                       ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800'
-                      : user?.role === 'lecturer'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'
-                        : 'bg-green-50 text-green-700 border border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800'
+                      : 'bg-green-50 text-green-700 border border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800'
                       }`}>
                       {user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1) || 'Guest'}
                     </span>
