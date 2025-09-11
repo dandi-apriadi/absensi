@@ -3,7 +3,6 @@ import {
     Students,
     Lecturers,
     Courses,
-    Rooms,
     CourseClasses,
     StudentEnrollments,
     AttendanceSessions,

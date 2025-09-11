@@ -67,79 +67,7 @@ const Courses = db.define('courses', {
 });
 
 // ===============================================
-// 2. ROOMS TABLE - Ruangan
-// ===============================================
-const Rooms = db.define('rooms', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    room_code: {
-        type: DataTypes.STRING(20),
-        unique: true,
-        allowNull: false
-    },
-    room_name: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    building: {
-        type: DataTypes.STRING(50),
-        allowNull: false
-    },
-    floor: {
-        type: DataTypes.INTEGER,
-        allowNull: false
-    },
-    capacity: {
-        type: DataTypes.INTEGER,
-        allowNull: false
-    },
-    room_type: {
-        type: DataTypes.ENUM('classroom', 'laboratory', 'auditorium', 'meeting_room', 'office'),
-        allowNull: false
-    },
-    facilities: {
-        type: DataTypes.JSON,
-        allowNull: true,
-        comment: 'Array of available facilities: projector, AC, etc.'
-    },
-    has_face_recognition: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false
-    },
-    door_access_code: {
-        type: DataTypes.STRING(50),
-        allowNull: true,
-        comment: 'Code for electronic door lock'
-    },
-    status: {
-        type: DataTypes.ENUM('available', 'maintenance', 'unavailable'),
-        defaultValue: 'available'
-    }
-}, {
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: false,
-    indexes: [
-        {
-            fields: ['room_code']
-        },
-        {
-            fields: ['building', 'floor']
-        },
-        {
-            fields: ['room_type']
-        },
-        {
-            fields: ['status']
-        }
-    ]
-});
-
-// ===============================================
-// 3. COURSE CLASSES TABLE - Kelas per Mata Kuliah
+// 2. COURSE CLASSES TABLE - Kelas per Mata Kuliah (No Room - Single Room System)
 // ===============================================
 const CourseClasses = db.define('course_classes', {
     id: {
@@ -174,15 +102,10 @@ const CourseClasses = db.define('course_classes', {
         type: DataTypes.INTEGER,
         defaultValue: 40
     },
-    room_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        comment: 'Reference to rooms table (manual relationship)'
-    },
     schedule: {
         type: DataTypes.JSON,
         allowNull: false,
-        comment: 'Array of schedule objects: [{day, start_time, end_time, room_id}]'
+        comment: 'Array of schedule objects: [{day, start_time, end_time}] - Single room system'
     },
     status: {
         type: DataTypes.ENUM('active', 'completed', 'cancelled'),
@@ -267,6 +190,5 @@ const StudentEnrollments = db.define('student_enrollments', {
 // const courseClass = await CourseClasses.findByPk(classId);
 // const course = await Courses.findByPk(courseClass.course_id);
 // const lecturer = await Users.findByPk(courseClass.lecturer_id);
-// const room = await Rooms.findByPk(courseClass.room_id);
 
-export { Courses, Rooms, CourseClasses, StudentEnrollments };
+export { Courses, CourseClasses, StudentEnrollments };

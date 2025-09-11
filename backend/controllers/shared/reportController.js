@@ -4,7 +4,6 @@ import {
     CourseClasses,
     Users,
     Courses,
-    Rooms,
     StudentEnrollments,
     db
 } from "../../models/index.js";

@@ -1,8 +1,11 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
+// Get base URL from environment variable
+const BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:5000";
+
 const api = axios.create({
-    baseURL: "http://localhost:5001",
+    baseURL: BASE_URL,
     withCredentials: true, // Setel secara global
 });
 
@@ -23,8 +26,7 @@ const getInitialSidebarState = () => {
 
 const initialState = {
     user: null,
-    baseURL: "http://localhost:5001",
-    // baseURL: api,
+    baseURL: api, // Use the axios instance instead of hardcoded URL
     microPage: "unset", // default value of microPage
     homepage: "unset",
     isError: false,

@@ -4,7 +4,6 @@ import {
     CourseClasses,
     Users,
     Courses,
-    Rooms,
     FaceDatasets,
     FaceRecognitionLogs,
     getUserWithRoleDetails,
@@ -141,12 +140,6 @@ export const getAttendanceSessions = async (req, res) => {
                             model: Courses,
                             as: 'course',
                             attributes: ['course_name', 'course_code']
-                        },
-                        {
-                            model: Rooms,
-                            as: 'room',
-                            attributes: ['room_name', 'building'],
-                            required: false
                         }
                     ]
                 },

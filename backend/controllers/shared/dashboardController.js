@@ -6,11 +6,11 @@ import {
     StudentAttendances,
     StudentEnrollments,
     Notifications,
-    SystemLogs,
     FaceDatasets,
     db
 } from "../../models/index.js";
 import { Op } from "sequelize";
+import logger from "../../utils/logger.js";
 
 // ===============================================
 // DASHBOARD CONTROLLERS
@@ -100,19 +100,8 @@ export const getSuperAdminDashboard = async (req, res) => {
             raw: true
         });
 
-        // Get recent system logs
-        const recentLogs = await SystemLogs.findAll({
-            limit: 10,
-            order: [['created_at', 'DESC']],
-            include: [
-                {
-                    model: Users,
-                    as: 'user',
-                    attributes: ['full_name', 'role'],
-                    required: false
-                }
-            ]
-        });
+        // Get recent system logs from file
+        const recentLogs = await logger.getRecentLogs('system', 10);
 
         // Get most active courses (by attendance sessions)
         const activeCourses = await AttendanceSessions.findAll({

@@ -98,72 +98,77 @@ export const getRoomById = async (req, res) => {
 /**
  * Create new room (Super Admin only)
  */
-export const createRoom = async (req, res) => {
+// ===============================================
+// ROOM CONTROLLER (SINGLE ROOM SYSTEM)
+// ===============================================
+
+/**
+ * Get room information (single room system)
+ */
+export const getRoomInfo = async (req, res) => {
     try {
-        if (req.session.role !== 'super-admin') {
-            return res.status(403).json({
-                success: false,
-                message: "Akses ditolak. Hanya super admin yang dapat membuat ruangan"
-            });
-        }
+        const roomInfo = {
+            id: 1,
+            room_name: "Ruang Kuliah Utama",
+            room_type: "classroom",
+            building: "Gedung Utama",
+            floor: 1,
+            capacity: 40,
+            facilities: ["Proyektor", "AC", "Whiteboard", "WiFi"],
+            description: "Ruang kuliah utama untuk sistem absensi"
+        };
 
-        const {
-            room_code,
-            room_name,
-            room_type,
-            building,
-            floor,
-            capacity,
-            equipment,
-            description,
-            has_face_recognition,
-            has_door_access_control
-        } = req.body;
-
-        // Validation
-        if (!room_code || !room_name || !room_type || !building) {
-            return res.status(400).json({
-                success: false,
-                message: "Kode ruangan, nama ruangan, tipe, dan gedung harus diisi"
-            });
-        }
-
-        // Check if room code already exists
-        const existingRoom = await Rooms.findOne({
-            where: { room_code }
-        });
-
-        if (existingRoom) {
-            return res.status(400).json({
-                success: false,
-                message: "Kode ruangan sudah ada"
-            });
-        }
-
-        const room = await Rooms.create({
-            room_code,
-            room_name,
-            room_type,
-            building,
-            floor,
-            capacity: capacity || 0,
-            equipment: equipment || null,
-            description,
-            has_face_recognition: has_face_recognition || false,
-            has_door_access_control: has_door_access_control || false,
-            status: 'active'
-        });
-
-        res.status(201).json({
+        res.status(200).json({
             success: true,
-            message: "Ruangan berhasil dibuat",
-            data: room
+            message: "Informasi ruangan berhasil diambil",
+            data: roomInfo
         });
     } catch (error) {
-        console.error('Create room error:', error);
+        console.error('Get room info error:', error);
         res.status(500).json({
             success: false,
-            message: "Gagal membuat ruangan"
+            message: "Terjadi kesalahan server"
+        });
+    }
+};
+
+/**
+ * Get all rooms (single room system)
+ */
+export const getAllRooms = async (req, res) => {
+    try {
+        const rooms = [
+            {
+                id: 1,
+                room_name: "Ruang Kuliah Utama",
+                room_type: "classroom",
+                building: "Gedung Utama",
+                floor: 1,
+                capacity: 40,
+                status: "active",
+                facilities: ["Proyektor", "AC", "Whiteboard", "WiFi"]
+            }
+        ];
+
+        res.status(200).json({
+            success: true,
+            message: "Daftar ruangan berhasil diambil",
+            data: {
+                rooms,
+                total: 1,
+                pagination: {
+                    page: 1,
+                    limit: 10,
+                    total_pages: 1,
+                    total_records: 1
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Get all rooms error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Terjadi kesalahan server"
         });
     }
 };

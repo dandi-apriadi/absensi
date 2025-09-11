@@ -3,7 +3,6 @@ import {
     Students,
     Lecturers,
     Courses,
-    Rooms,
     CourseClasses,
     StudentEnrollments,
     AttendanceSessions,
@@ -68,10 +67,6 @@ export const getDashboard = async (req, res) => {
                             as: 'user',
                             attributes: ['full_name']
                         }]
-                    },
-                    {
-                        model: Rooms,
-                        as: 'room'
                     }
                 ]
             }]
@@ -107,9 +102,6 @@ export const getDashboard = async (req, res) => {
                         }]
                     }
                 ]
-            }, {
-                model: Rooms,
-                as: 'room'
             }],
             order: [['start_time', 'ASC']]
         });
@@ -140,9 +132,6 @@ export const getDashboard = async (req, res) => {
                     model: Courses,
                     as: 'course'
                 }]
-            }, {
-                model: Rooms,
-                as: 'room'
             }],
             order: [['session_date', 'ASC'], ['start_time', 'ASC']],
             limit: 5

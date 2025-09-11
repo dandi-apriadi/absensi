@@ -3,9 +3,9 @@ import db from "../config/Database.js";
 
 // Import all models
 import { Users } from "./userManagementModel.js";
-import { Courses, Rooms, CourseClasses, StudentEnrollments } from "./courseManagementModel.js";
+import { Courses, CourseClasses, StudentEnrollments } from "./courseManagementModel.js";
 import { AttendanceSessions, StudentAttendances, FaceDatasets, FaceRecognitionLogs } from "./attendanceModel.js";
-import { Notifications, DoorAccessLogs, RoomAccessPermissions, SystemLogs, SystemSettings } from "./systemModel.js";
+import { Notifications, DoorAccessLogs } from "./systemModel.js";
 
 // ===============================================
 // RELATIONSHIPS REMOVED TO PREVENT TABLESPACE ISSUES
@@ -64,10 +64,9 @@ const getCourseClassDetails = async (classId) => {
     const courseClass = await CourseClasses.findByPk(classId);
     
     if (courseClass) {
-        // Manual joins since we removed associations
+        // Manual joins since we removed associations (single room system)
         const course = await Courses.findByPk(courseClass.course_id);
         const lecturer = await Users.findByPk(courseClass.lecturer_id);
-        const room = await Rooms.findByPk(courseClass.room_id);
         const enrollments = await StudentEnrollments.findAll({
             where: { class_id: classId }
         });
@@ -76,7 +75,7 @@ const getCourseClassDetails = async (classId) => {
             ...courseClass.toJSON(),
             course,
             lecturer,
-            room,
+            room: { room_name: 'Main Classroom' }, // Single room system
             enrollments
         };
     }
@@ -92,10 +91,9 @@ const getAttendanceSessionDetails = async (sessionId) => {
     const session = await AttendanceSessions.findByPk(sessionId);
     
     if (session) {
-        // Manual joins since we removed associations
+        // Manual joins since we removed associations (single room system)
         const classInfo = await CourseClasses.findByPk(session.class_id);
         const course = classInfo ? await Courses.findByPk(classInfo.course_id) : null;
-        const room = await Rooms.findByPk(session.room_id);
         const creator = await Users.findByPk(session.created_by);
         const attendances = await StudentAttendances.findAll({
             where: { session_id: sessionId }
@@ -107,7 +105,7 @@ const getAttendanceSessionDetails = async (sessionId) => {
                 ...classInfo.toJSON(),
                 course
             } : null,
-            room,
+            room: { room_name: 'Main Classroom' }, // Single room system
             creator,
             attendances
         };
@@ -127,7 +125,6 @@ export {
 
     // Course Management Models
     Courses,
-    Rooms,
     CourseClasses,
     StudentEnrollments,
 
@@ -140,9 +137,6 @@ export {
     // System Models
     Notifications,
     DoorAccessLogs,
-    RoomAccessPermissions,
-    SystemLogs,
-    SystemSettings,
 
     // Utility functions
     syncModels,
@@ -157,7 +151,6 @@ export default {
     models: {
         Users,
         Courses,
-        Rooms,
         CourseClasses,
         StudentEnrollments,
         AttendanceSessions,
@@ -165,10 +158,7 @@ export default {
         FaceDatasets,
         FaceRecognitionLogs,
         Notifications,
-        DoorAccessLogs,
-        RoomAccessPermissions,
-        SystemLogs,
-        SystemSettings
+        DoorAccessLogs
     },
     helpers: {
         syncModels,

@@ -1,19 +1,16 @@
 import {
-    SystemLogs,
-    SystemSettings,
     DoorAccessLogs,
-    RoomAccessPermissions,
-    Users,
-    Rooms
+    Users
 } from "../../models/index.js";
 import { Op } from "sequelize";
+import logger from "../../utils/logger.js";
 
 // ===============================================
 // SYSTEM MANAGEMENT CONTROLLERS
 // ===============================================
 
 /**
- * Get system logs (Super Admin only)
+ * Get system logs from file system (Super Admin only)
  */
 export const getSystemLogs = async (req, res) => {
     try {
@@ -24,59 +21,50 @@ export const getSystemLogs = async (req, res) => {
             });
         }
 
-        const { page = 1, limit = 20, level, action, start_date, end_date } = req.query;
+        const { page = 1, limit = 20, level, type = 'app', date } = req.query;
         const offset = (page - 1) * limit;
 
-        let whereClause = {};
-
-        if (level) {
-            whereClause.level = level;
+        // Get logs from file system
+        let logEntries = [];
+        
+        if (date) {
+            // Get logs for specific date
+            const logFile = logger.getLogFiles(new Date(date), new Date(date), type);
+            if (logFile.length > 0) {
+                logEntries = logger.readLogFile(logFile[0], { level });
+            }
+        } else {
+            // Get logs for last 7 days
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - 7);
+            
+            const logFiles = logger.getLogFiles(startDate, endDate, type);
+            for (const file of logFiles) {
+                const entries = logger.readLogFile(file, { level });
+                logEntries = [...logEntries, ...entries];
+            }
         }
 
-        if (action) {
-            whereClause.action = { [Op.iLike]: `%${action}%` };
-        }
+        // Sort by timestamp (newest first)
+        logEntries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-        if (start_date && end_date) {
-            whereClause.created_at = {
-                [Op.between]: [new Date(start_date), new Date(end_date)]
-            };
-        } else if (start_date) {
-            whereClause.created_at = {
-                [Op.gte]: new Date(start_date)
-            };
-        } else if (end_date) {
-            whereClause.created_at = {
-                [Op.lte]: new Date(end_date)
-            };
-        }
-
-        const logs = await SystemLogs.findAndCountAll({
-            where: whereClause,
-            order: [['created_at', 'DESC']],
-            limit: parseInt(limit),
-            offset: offset,
-            include: [
-                {
-                    model: Users,
-                    as: 'user',
-                    attributes: ['full_name', 'role', 'user_id'],
-                    required: false
-                }
-            ]
-        });
+        // Apply pagination
+        const total = logEntries.length;
+        const paginatedLogs = logEntries.slice(offset, offset + parseInt(limit));
 
         res.status(200).json({
             success: true,
             data: {
-                logs: logs.rows,
+                logs: paginatedLogs,
                 pagination: {
-                    total: logs.count,
+                    total: total,
                     page: parseInt(page),
                     limit: parseInt(limit),
-                    totalPages: Math.ceil(logs.count / limit)
+                    totalPages: Math.ceil(total / limit)
                 }
-            }
+            },
+            message: "Log sistem berhasil diambil dari file system"
         });
     } catch (error) {
         console.error('Get system logs error:', error);
@@ -88,36 +76,62 @@ export const getSystemLogs = async (req, res) => {
 };
 
 /**
- * Create system log entry
+ * Create system log entry (using file-based logging)
  */
 export const createSystemLog = async (req, res) => {
     try {
-        const { level, action, details, ip_address } = req.body;
+        const { level = 'info', action, details, type = 'system' } = req.body;
         const userId = req.session.userId || null;
 
         // Validation
-        if (!level || !action) {
+        if (!action) {
             return res.status(400).json({
                 success: false,
-                message: "Level dan action harus diisi"
+                message: "Action harus diisi"
             });
         }
 
-        const log = await SystemLogs.create({
+        // Create log entry using file-based logger
+        const logData = {
             user_id: userId,
-            level,
             action,
             details: details || null,
-            ip_address: ip_address || req.ip || req.connection.remoteAddress
-        });
+            ip_address: req.ip || req.connection.remoteAddress,
+            user_agent: req.get('User-Agent')
+        };
+
+        // Use appropriate logging method based on level
+        switch (level.toLowerCase()) {
+            case 'error':
+                logger.error(`System Action: ${action}`, logData, type);
+                break;
+            case 'warn':
+                logger.warn(`System Action: ${action}`, logData, type);
+                break;
+            case 'debug':
+                logger.debug(`System Action: ${action}`, logData, type);
+                break;
+            default:
+                logger.info(`System Action: ${action}`, logData, type);
+        }
 
         res.status(201).json({
             success: true,
             message: "Log sistem berhasil dibuat",
-            data: log
+            data: {
+                level,
+                action,
+                details,
+                timestamp: new Date().toISOString(),
+                logged_to_file: true
+            }
         });
     } catch (error) {
         console.error('Create system log error:', error);
+        logger.error('Failed to create system log', { 
+            error: error.message,
+            action: req.body.action 
+        });
         res.status(500).json({
             success: false,
             message: "Gagal membuat log sistem"
@@ -126,7 +140,7 @@ export const createSystemLog = async (req, res) => {
 };
 
 /**
- * Get system settings (Admin only)
+ * Get system settings from static configuration (Admin only)
  */
 export const getSystemSettings = async (req, res) => {
     try {
@@ -137,33 +151,36 @@ export const getSystemSettings = async (req, res) => {
             });
         }
 
+        // Import system configuration
+        const { SYSTEM_CONFIG } = await import('../../config/systemSettings.js');
+        
         const { category } = req.query;
-        let whereClause = {};
-
+        
+        let settingsData = {};
+        
         if (category) {
-            whereClause.category = category;
-        }
-
-        const settings = await SystemSettings.findAll({
-            where: whereClause,
-            order: [['category', 'ASC'], ['setting_key', 'ASC']]
-        });
-
-        // Group settings by category
-        const groupedSettings = settings.reduce((acc, setting) => {
-            if (!acc[setting.category]) {
-                acc[setting.category] = [];
+            // Return specific category
+            if (SYSTEM_CONFIG[category.toUpperCase()]) {
+                settingsData[category.toUpperCase()] = SYSTEM_CONFIG[category.toUpperCase()];
+            } else {
+                return res.status(404).json({
+                    success: false,
+                    message: `Kategori '${category}' tidak ditemukan`
+                });
             }
-            acc[setting.category].push(setting);
-            return acc;
-        }, {});
+        } else {
+            // Return all settings
+            settingsData = SYSTEM_CONFIG;
+        }
 
         res.status(200).json({
             success: true,
             data: {
-                settings: groupedSettings,
-                total: settings.length
-            }
+                settings: settingsData,
+                source: 'static_configuration',
+                environment: process.env.NODE_ENV || 'development'
+            },
+            message: "Pengaturan sistem berhasil diambil dari konfigurasi static"
         });
     } catch (error) {
         console.error('Get system settings error:', error);
@@ -176,6 +193,7 @@ export const getSystemSettings = async (req, res) => {
 
 /**
  * Update system setting (Super Admin only)
+ * Note: Settings are now managed via environment variables
  */
 export const updateSystemSetting = async (req, res) => {
     try {
@@ -186,36 +204,32 @@ export const updateSystemSetting = async (req, res) => {
             });
         }
 
-        const { id } = req.params;
-        const { setting_value, description } = req.body;
+        const { category, key } = req.params;
+        const { value, description } = req.body;
 
-        const setting = await SystemSettings.findByPk(id);
-        if (!setting) {
-            return res.status(404).json({
-                success: false,
-                message: "Pengaturan tidak ditemukan"
-            });
-        }
-
-        await setting.update({
-            setting_value,
-            description: description || setting.description,
-            updated_at: new Date()
-        });
-
-        // Log the change
-        await SystemLogs.create({
+        // Since settings are now environment-based, we can't update them directly
+        // This endpoint now serves as an information endpoint
+        
+        logger.system('setting_update_attempted', {
             user_id: req.session.userId,
-            level: 'info',
-            action: 'update_system_setting',
-            details: `Updated setting: ${setting.setting_key} = ${setting_value}`,
-            ip_address: req.ip || req.connection.remoteAddress
+            category,
+            key,
+            attempted_value: value,
+            ip_address: req.ip || req.connection.remoteAddress,
+            note: 'Settings are now managed via environment variables'
         });
 
         res.status(200).json({
-            success: true,
-            message: "Pengaturan sistem berhasil diperbarui",
-            data: setting
+            success: false,
+            message: "Pengaturan sistem sekarang dikelola melalui environment variables. Silakan update file .env dan restart aplikasi.",
+            data: {
+                category,
+                key,
+                attempted_value: value,
+                current_management: "environment_variables",
+                config_file: "backend/config/systemSettings.js",
+                env_file: ".env"
+            }
         });
     } catch (error) {
         console.error('Update system setting error:', error);
@@ -238,14 +252,10 @@ export const getDoorAccessLogs = async (req, res) => {
             });
         }
 
-        const { page = 1, limit = 20, room_id, status, start_date, end_date } = req.query;
+        const { page = 1, limit = 20, status, start_date, end_date } = req.query;
         const offset = (page - 1) * limit;
 
         let whereClause = {};
-
-        if (room_id) {
-            whereClause.room_id = room_id;
-        }
 
         if (status) {
             whereClause.access_status = status;
@@ -267,12 +277,6 @@ export const getDoorAccessLogs = async (req, res) => {
                     model: Users,
                     as: 'user',
                     attributes: ['full_name', 'role', 'user_id'],
-                    required: false
-                },
-                {
-                    model: Rooms,
-                    as: 'room',
-                    attributes: ['room_name', 'room_type', 'building'],
                     required: false
                 }
             ]
@@ -311,12 +315,8 @@ export const getRoomAccessPermissions = async (req, res) => {
             });
         }
 
-        const { room_id, user_id } = req.query;
+        const { user_id } = req.query;
         let whereClause = {};
-
-        if (room_id) {
-            whereClause.room_id = room_id;
-        }
 
         if (user_id) {
             whereClause.user_id = user_id;
@@ -329,11 +329,6 @@ export const getRoomAccessPermissions = async (req, res) => {
                     model: Users,
                     as: 'user',
                     attributes: ['full_name', 'role', 'user_id']
-                },
-                {
-                    model: Rooms,
-                    as: 'room',
-                    attributes: ['room_name', 'room_type', 'building']
                 },
                 {
                     model: Users,
@@ -361,142 +356,9 @@ export const getRoomAccessPermissions = async (req, res) => {
     }
 };
 
-/**
- * Grant room access permission (Super Admin only)
- */
-export const grantRoomAccess = async (req, res) => {
-    try {
-        if (req.session.role !== 'super-admin') {
-            return res.status(403).json({
-                success: false,
-                message: "Akses ditolak. Hanya super admin yang dapat memberikan izin akses ruangan"
-            });
-        }
-
-        const { user_id, room_id, valid_from, valid_until, access_type } = req.body;
-        const grantedBy = req.session.userId;
-
-        // Validation
-        if (!user_id || !room_id) {
-            return res.status(400).json({
-                success: false,
-                message: "User ID dan Room ID harus diisi"
-            });
-        }
-
-        // Check if user and room exist
-        const [user, room] = await Promise.all([
-            Users.findByPk(user_id),
-            Rooms.findByPk(room_id)
-        ]);
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User tidak ditemukan"
-            });
-        }
-
-        if (!room) {
-            return res.status(404).json({
-                success: false,
-                message: "Ruangan tidak ditemukan"
-            });
-        }
-
-        // Check if permission already exists
-        const existingPermission = await RoomAccessPermissions.findOne({
-            where: { user_id, room_id }
-        });
-
-        if (existingPermission) {
-            return res.status(400).json({
-                success: false,
-                message: "Izin akses untuk user dan ruangan ini sudah ada"
-            });
-        }
-
-        const permission = await RoomAccessPermissions.create({
-            user_id,
-            room_id,
-            granted_by: grantedBy,
-            valid_from: valid_from || new Date(),
-            valid_until: valid_until || null,
-            access_type: access_type || 'temporary'
-        });
-
-        // Log the action
-        await SystemLogs.create({
-            user_id: grantedBy,
-            level: 'info',
-            action: 'grant_room_access',
-            details: `Granted ${access_type || 'temporary'} access to room ${room.room_name} for user ${user.full_name}`,
-            ip_address: req.ip || req.connection.remoteAddress
-        });
-
-        res.status(201).json({
-            success: true,
-            message: "Izin akses ruangan berhasil diberikan",
-            data: permission
-        });
-    } catch (error) {
-        console.error('Grant room access error:', error);
-        res.status(500).json({
-            success: false,
-            message: "Gagal memberikan izin akses ruangan"
-        });
-    }
-};
-
-/**
- * Revoke room access permission (Super Admin only)
- */
-export const revokeRoomAccess = async (req, res) => {
-    try {
-        if (req.session.role !== 'super-admin') {
-            return res.status(403).json({
-                success: false,
-                message: "Akses ditolak. Hanya super admin yang dapat mencabut izin akses ruangan"
-            });
-        }
-
-        const { id } = req.params;
-        const revokedBy = req.session.userId;
-
-        const permission = await RoomAccessPermissions.findByPk(id, {
-            include: [
-                { model: Users, as: 'user', attributes: ['full_name'] },
-                { model: Rooms, as: 'room', attributes: ['room_name'] }
-            ]
-        });
-
-        if (!permission) {
-            return res.status(404).json({
-                success: false,
-                message: "Izin akses tidak ditemukan"
-            });
-        }
-
-        await permission.destroy();
-
-        // Log the action
-        await SystemLogs.create({
-            user_id: revokedBy,
-            level: 'info',
-            action: 'revoke_room_access',
-            details: `Revoked room access to ${permission.room.room_name} for user ${permission.user.full_name}`,
-            ip_address: req.ip || req.connection.remoteAddress
-        });
-
-        res.status(200).json({
-            success: true,
-            message: "Izin akses ruangan berhasil dicabut"
-        });
-    } catch (error) {
-        console.error('Revoke room access error:', error);
-        res.status(500).json({
-            success: false,
-            message: "Gagal mencabut izin akses ruangan"
-        });
-    }
-};
+// ===============================================
+// ROOM ACCESS FUNCTIONS REMOVED
+// ===============================================
+// Since we only have 1 room, room access permission system is no longer needed.
+// All users can access the main room based on their role and schedule.
+// Door access is controlled by face recognition and user validation.

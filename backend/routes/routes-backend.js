@@ -5,7 +5,6 @@ import NotificationRoute from './shared/notificationRoutes.js';
 import SystemRoute from './shared/systemRoutes.js';
 import AttendanceRoute from './shared/attendanceRoutes.js';
 import CourseRoute from './shared/courseRoutes.js';
-import RoomRoute from './shared/roomRoutes.js';
 import ReportRoute from './shared/reportRoutes.js';
 import DashboardRoute from './shared/dashboardRoutes.js';
 
@@ -21,7 +20,6 @@ router.use('/api/notifications', NotificationRoute);
 router.use('/api/system', SystemRoute);
 router.use('/api/attendance', AttendanceRoute);
 router.use('/api/courses', CourseRoute);
-router.use('/api/rooms', RoomRoute);
 router.use('/api/reports', ReportRoute);
 
 export default router;

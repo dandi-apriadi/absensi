@@ -97,18 +97,13 @@ const Notifications = db.define('notifications', {
 });
 
 // ===============================================
-// 2. DOOR ACCESS LOGS TABLE - Log Akses Pintu
+// 2. DOOR ACCESS LOGS TABLE - Log Akses Pintu (Simplified - 1 Room Only)
 // ===============================================
 const DoorAccessLogs = db.define('door_access_logs', {
     id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true
-    },
-    room_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        comment: 'Reference to rooms table (manual relationship)'
     },
     user_id: {
         type: DataTypes.INTEGER,
@@ -145,9 +140,6 @@ const DoorAccessLogs = db.define('door_access_logs', {
     timestamps: false,
     indexes: [
         {
-            fields: ['room_id', 'accessed_at']
-        },
-        {
             fields: ['user_id']
         },
         {
@@ -160,70 +152,11 @@ const DoorAccessLogs = db.define('door_access_logs', {
 });
 
 // ===============================================
-// 3. ROOM ACCESS PERMISSIONS TABLE - Izin Akses Ruangan
-// ===============================================
-const RoomAccessPermissions = db.define('room_access_permissions', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    user_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        comment: 'Reference to users table (manual relationship)'
-    },
-    room_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        comment: 'Reference to rooms table (manual relationship)'
-    },
-    permission_type: {
-        type: DataTypes.ENUM('full_access', 'scheduled_access', 'limited_access'),
-        allowNull: false
-    },
-    start_date: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    },
-    end_date: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    },
-    time_restrictions: {
-        type: DataTypes.JSON,
-        allowNull: true,
-        comment: 'Array of time slots when access is allowed'
-    },
-    granted_by: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        comment: 'Reference to users table - who granted the permission (manual relationship)'
-    },
-    is_active: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: true
-    }
-}, {
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: false,
-    indexes: [
-        {
-            fields: ['user_id', 'room_id']
-        },
-        {
-            fields: ['is_active']
-        },
-        {
-            fields: ['permission_type']
-        }
-    ]
-});
-
-// ===============================================
 // 4. SYSTEM LOGS TABLE - Log Sistem & Jejak Audit
 // ===============================================
+// REMOVED: SystemLogs table dihapus untuk simplifikasi
+// Diganti dengan file-based logging system (backend/utils/logger.js)
+/*
 const SystemLogs = db.define('system_logs', {
     id: {
         type: DataTypes.INTEGER,
@@ -295,10 +228,14 @@ const SystemLogs = db.define('system_logs', {
         }
     ]
 });
+*/
 
 // ===============================================
 // 5. SYSTEM SETTINGS TABLE - Pengaturan & Konfigurasi
 // ===============================================
+// REMOVED: SystemSettings table dihapus untuk simplifikasi
+// Diganti dengan environment variables dan static config (backend/config/systemSettings.js)
+/*
 const SystemSettings = db.define('system_settings', {
     id: {
         type: DataTypes.INTEGER,
@@ -353,6 +290,7 @@ const SystemSettings = db.define('system_settings', {
         }
     ]
 });
+*/
 
 // ===============================================
 // RELATIONSHIPS REMOVED TO PREVENT TABLESPACE ISSUES
@@ -372,8 +310,5 @@ const SystemSettings = db.define('system_settings', {
 
 export {
     Notifications,
-    DoorAccessLogs,
-    RoomAccessPermissions,
-    SystemLogs,
-    SystemSettings
+    DoorAccessLogs
 };

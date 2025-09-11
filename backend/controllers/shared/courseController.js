@@ -1,7 +1,6 @@
 import {
     Courses,
     CourseClasses,
-    Rooms,
     Users,
     StudentEnrollments,
     AttendanceSessions,
@@ -285,12 +284,6 @@ export const getCourseClasses = async (req, res) => {
                     model: Courses,
                     as: 'course',
                     attributes: ['course_name', 'course_code', 'credits']
-                },
-                {
-                    model: Rooms,
-                    as: 'room',
-                    attributes: ['room_name', 'building', 'capacity'],
-                    required: false
                 }
             ]
         });
