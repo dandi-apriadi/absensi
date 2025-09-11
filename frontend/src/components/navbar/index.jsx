@@ -1,6 +1,6 @@
 /**
- * Smart Attendance System - Ultra Modern Navbar Component
- * Features: Glassmorphism design, micro-interactions, adaptive theming
+ * Smart Attendance System - Simple Navbar Component
+ * Features: Clean design, essential functionality only
  */
 
 // Core React & Redux imports
@@ -17,11 +17,11 @@ import Dropdown from "components/dropdown";
 // Icons - Modern icon set
 import {
   // Menu & Navigation
-  FiMenu, FiX, FiChevronLeft, FiChevronRight, FiSidebar, FiLayers,
+  FiMenu, FiX, FiChevronRight,
   // User & Profile
   FiUser, FiSettings,
-  // System & Time
-  FiClock, FiCalendar, FiShield, FiZap, FiActivity
+  // System
+  FiShield
 } from "react-icons/fi";
 import { HiOutlineDotsVertical, HiOutlineSparkles } from "react-icons/hi";
 import { MdOutlineSchedule, MdFaceRetouchingNatural, MdOutlineAutoAwesome } from "react-icons/md";
@@ -33,26 +33,17 @@ import avatar from "assets/img/avatars/avatar4.png";
 import "../../assets/css/attendance-navbar.css";
 
 /**
- * Main Navbar Component for Smart Attendance System
+ * Simple Navbar Component for Smart Attendance System
  * @param {Function} onOpenSidenav - Legacy sidebar toggle handler (optional)
  * @param {string} brandText - Initial breadcrumb text
  */
 const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
   // ===== STATE MANAGEMENT =====
   const [brandText, setBrandText] = useState(initialBrandText);
-  const [currentTime, setCurrentTime] = useState(new Date());
   const dispatch = useDispatch();
   const { microPage, user, sidebarOpen } = useSelector((state) => state.auth);
 
   // ===== EFFECTS =====
-  // Real-time clock update
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   // Dynamic breadcrumb update
   useEffect(() => {
     setBrandText(microPage !== "unset" ? microPage : initialBrandText);
@@ -87,6 +78,7 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
     };
     return roleNames[role] || "User";
   };
+
   const handleToggleSidebar = () => {
     dispatch(toggleSidebar());
     // Legacy support for external handlers
@@ -96,7 +88,7 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
   // ===== SUB-COMPONENTS FOR BETTER ORGANIZATION =====
 
   /**
-   * Clean Mobile Sidebar Toggle
+   * Mobile Sidebar Toggle
    */
   const MobileSidebarToggle = ({ sidebarOpen, currentScheme, onToggle }) => (
     <button
@@ -124,57 +116,9 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
         <FiMenu className={`absolute w-6 h-6 transition-all duration-500 ease-out ${sidebarOpen ? 'opacity-0 scale-50 rotate-90' : 'opacity-100 scale-100 rotate-0'}`} />
         <FiX className={`absolute w-6 h-6 transition-all duration-500 ease-out ${sidebarOpen ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-50 -rotate-90'}`} />
       </div>
-
-      {/* Clean status indicator */}
-      {sidebarOpen && (
-        <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full animate-bounce border-2 border-white">
-          <div className="absolute inset-1 bg-white rounded-full animate-pulse"></div>
-        </div>
-      )}
     </button>
   );  /**
-   * Clean Desktop Sidebar Toggle
-   */
-  const DesktopSidebarToggle = ({ sidebarOpen, currentScheme, onToggle }) => (
-    <button
-      onClick={onToggle}
-      className={`
-      hidden lg:flex items-center justify-between
-      px-5 py-3 rounded-2xl min-w-[160px] group
-      transition-all duration-500 ease-out transform
-      ${sidebarOpen
-          ? 'bg-white/90 dark:bg-slate-800/90 text-gray-700 dark:text-white border border-gray-200/50 dark:border-slate-600/50 backdrop-blur-xl'
-          : `bg-gradient-to-r ${currentScheme.primary} text-white border border-white/20 backdrop-blur-xl`}
-      hover:scale-105 hover:opacity-90 active:scale-95
-      focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-${currentScheme.accent}
-      overflow-hidden relative
-    `}
-      type="button"
-      aria-label="Toggle sidebar on desktop"
-      data-testid="desktop-sidebar-toggle"
-    >
-      {/* Animated background overlay */}
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-all duration-700"></div>
-
-      {/* Content container */}
-      <div className="relative z-10 flex items-center space-x-3">
-        <div className="relative w-6 h-6 flex items-center justify-center">
-          <FiSidebar className={`absolute w-6 h-6 transition-all duration-500 ease-out ${sidebarOpen ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-75 rotate-45'}`} />
-          <FiLayers className={`absolute w-6 h-6 transition-all duration-500 ease-out ${!sidebarOpen ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-75 -rotate-45'}`} />
-        </div>
-        <span className="text-sm font-semibold tracking-wide">
-          {sidebarOpen ? "Hide Panel" : "Show Panel"}
-        </span>
-      </div>
-
-      {/* Clean directional indicator */}
-      <div className="relative w-5 h-5 z-10">
-        <FiChevronLeft className={`absolute w-5 h-5 transition-all duration-500 ease-out ${sidebarOpen ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-75 rotate-180'}`} />
-        <FiChevronRight className={`absolute w-5 h-5 transition-all duration-500 ease-out ${!sidebarOpen ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-75 -rotate-180'}`} />
-      </div>
-    </button>
-  );  /**
-   * Clean System Breadcrumb with Glassmorphism
+   * System Breadcrumb with Glassmorphism
    */
   const SystemBreadcrumb = ({ brandText }) => (
     <div className="flex items-center space-x-3">
@@ -205,95 +149,7 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
       </div>
     </div>
   );  /**
-   * Clean System Status Center
-   */
-  const SystemStatusCenter = ({ currentTime }) => (
-    <div className="flex items-center space-x-4">
-      {/* Clean Real-time Clock */}
-      <div className="group flex items-center space-x-3 px-4 py-3 
-                      bg-gradient-to-r from-slate-50/90 to-white/90 dark:from-slate-800/90 dark:to-slate-700/90 
-                      backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-slate-600/50 
-                      hover:scale-105 transition-all duration-300">
-        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center transition-all duration-300">
-          <FiClock className="h-5 w-5 text-white animate-pulse" />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 tracking-wider uppercase">Live Time</span>
-          <span className="text-sm font-mono font-bold bg-gradient-to-r from-gray-700 to-gray-900 dark:from-gray-200 dark:to-white bg-clip-text text-transparent">
-            {currentTime.toLocaleTimeString('id-ID', {
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit'
-            })}
-          </span>
-        </div>
-      </div>
-
-      {/* Clean Date Display */}
-      <div className="group flex items-center space-x-3 px-4 py-3 
-                      bg-gradient-to-r from-emerald-50/90 to-green-50/90 dark:from-emerald-900/30 dark:to-green-900/30 
-                      backdrop-blur-xl rounded-2xl border border-emerald-200/50 dark:border-emerald-800/50 
-                      hover:scale-105 transition-all duration-300">
-        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-green-500 rounded-xl flex items-center justify-center transition-all duration-300">
-          <FiCalendar className="h-5 w-5 text-white" />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 tracking-wider uppercase">Today</span>
-          <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-            {currentTime.toLocaleDateString('id-ID', {
-              weekday: 'short',
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric'
-            })}
-          </span>
-        </div>
-      </div>
-
-      {/* System Status Indicator */}
-      <div className="group flex items-center space-x-3 px-4 py-3 
-                      bg-gradient-to-r from-violet-50/90 to-purple-50/90 dark:from-violet-900/30 dark:to-purple-900/30 
-                      backdrop-blur-xl rounded-2xl border border-violet-200/50 dark:border-violet-800/50 
-                      hover:scale-105 transition-all duration-300">
-        <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-500 rounded-xl flex items-center justify-center transition-all duration-300">
-          <FiActivity className="h-5 w-5 text-white animate-pulse" />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xs font-medium text-violet-600 dark:text-violet-400 tracking-wider uppercase">System</span>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm font-semibold text-violet-700 dark:text-violet-300">Online</span>
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );  /**
-   * Clean Quick Action Buttons
-   */
-  const QuickActionButtons = ({ userRole }) => (
-    <>
-      {/* Admin/Lecturer Live Monitor with clean styling */}
-      {(userRole === 'admin' || userRole === 'lecture') && (
-        <button className="group hidden md:flex items-center space-x-3 px-5 py-3 
-                          bg-gradient-to-r from-blue-500/10 to-cyan-500/10 hover:from-blue-500/20 hover:to-cyan-500/20
-                          dark:from-blue-500/20 dark:to-cyan-500/20 dark:hover:from-blue-500/30 dark:hover:to-cyan-500/30
-                          text-blue-700 dark:text-blue-300 rounded-2xl 
-                          border border-blue-200/50 dark:border-blue-800/50 
-                          backdrop-blur-xl hover:scale-105 
-                          transition-all duration-300 active:scale-95
-                          focus:outline-none focus:ring-2 focus:ring-blue-500/50">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center transition-all duration-300">
-            <MdOutlineSchedule className="h-4 w-4 text-white" />
-          </div>
-          <span className="text-sm font-semibold tracking-wide">Live Monitor</span>
-          <FiZap className="h-4 w-4 text-blue-500 animate-pulse" />
-        </button>
-      )}
-    </>
-  );
-
-  /**
-   * Clean User Profile Dropdown
+   * User Profile Dropdown
    */
   const UserProfileDropdown = ({ user, currentScheme, getRoleDisplayName }) => (
     <Dropdown
@@ -329,12 +185,12 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
       classNames="py-2 top-full mt-2 -right-4 z-50"
     />
   );  /**
-   * Clean Profile Dropdown Content
+   * Profile Dropdown Content
    */
   const ProfileDropdownContent = ({ user, currentScheme, getRoleDisplayName }) => (
     <div className="w-80">
       <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-slate-700/50 overflow-hidden">
-        {/* Clean Profile Header */}
+        {/* Profile Header */}
         <div className={`px-6 py-6 bg-gradient-to-br ${currentScheme.primary} relative overflow-hidden`}>
           <div className="absolute inset-0 bg-gradient-to-r from-black/10 via-transparent to-white/10"></div>
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16"></div>
@@ -357,7 +213,7 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
                 {getRoleDisplayName(user?.role)}
               </p>
 
-              {/* Clean Role Badge */}
+              {/* Role Badge */}
               <div className="mt-3">
                 <div className="inline-flex items-center px-3 py-1.5 rounded-xl bg-white/20 backdrop-blur-sm border border-white/30">
                   <div className="w-6 h-6 bg-white/30 rounded-lg flex items-center justify-center mr-2">
@@ -375,10 +231,10 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
           </div>
         </div>
 
-        {/* Clean Menu Items */}
+        {/* Menu Items */}
         <ProfileMenuItems userRole={user?.role} />
 
-        {/* Clean Sign Out Section */}
+        {/* Sign Out Section */}
         <div className="border-t border-gray-100 dark:border-slate-700/50 p-2">
           <button className="w-full group flex items-center px-4 py-4 text-red-600 hover:bg-gradient-to-r hover:from-red-50 hover:to-red-100 dark:hover:from-red-900/20 dark:hover:to-red-800/20 transition-all duration-300 rounded-2xl">
             <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-2xl flex items-center justify-center mr-4 transition-all duration-300">
@@ -395,7 +251,7 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
       </div>
     </div>
   );  /**
-   * Clean Profile Menu Items
+   * Profile Menu Items
    */
   const ProfileMenuItems = ({ userRole }) => (
     <div className="p-2 space-y-1">
@@ -411,7 +267,9 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
       {/* Student-specific menu */}
       {userRole === 'student' && (
         <ProfileMenuItem
-          icon={<FiCalendar className="h-5 w-5 text-white" />}
+          icon={<svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>}
           iconBg="from-emerald-500 to-emerald-600"
           bgColor="group-hover:bg-emerald-50/80 dark:group-hover:bg-emerald-900/30"
           label="My Attendance"
@@ -440,7 +298,7 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
       />
     </div>
   );  /**
-   * Clean Profile Menu Item
+   * Profile Menu Item
    */
   const ProfileMenuItem = ({ icon, iconBg, bgColor, label, subtitle }) => (
     <a href="#" className={`group flex items-center px-4 py-4 text-gray-700 dark:text-gray-200 ${bgColor} transition-all duration-300 rounded-2xl hover:scale-[1.02]`}>
@@ -453,10 +311,12 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
       </div>
       <FiChevronRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-300" />
     </a>
-  );  // ===== MAIN COMPONENT RENDER =====
+  );
+
+  // ===== MAIN COMPONENT RENDER =====
   return (
     <header className="sticky top-0 z-40 w-full">
-      {/* Clean Glassmorphism Container */}
+      {/* Glassmorphism Container */}
       <div className="mx-4 mt-4 mb-2">
         <nav className="group flex items-center justify-between h-18 px-8 
                         bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xl 
@@ -480,22 +340,11 @@ const Navbar = ({ onOpenSidenav, brandText: initialBrandText }) => {
               currentScheme={currentScheme}
               onToggle={handleToggleSidebar}
             />
-            <DesktopSidebarToggle
-              sidebarOpen={sidebarOpen}
-              currentScheme={currentScheme}
-              onToggle={handleToggleSidebar}
-            />
             <SystemBreadcrumb brandText={brandText} />
           </div>
 
-          {/* ===== CENTER SECTION: Real-time System Status ===== */}
-          <div className="relative z-10 hidden lg:flex flex-1 max-w-4xl mx-8 justify-center">
-            <SystemStatusCenter currentTime={currentTime} />
-          </div>
-
-          {/* ===== RIGHT SECTION: User Actions & Profile ===== */}
+          {/* ===== RIGHT SECTION: User Profile ===== */}
           <div className="relative z-10 flex items-center space-x-4">
-            <QuickActionButtons userRole={user?.role} />
             <UserProfileDropdown
               user={user}
               currentScheme={currentScheme}

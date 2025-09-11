@@ -8,116 +8,15 @@ import { AttendanceSessions, StudentAttendances, FaceDatasets, FaceRecognitionLo
 import { Notifications, DoorAccessLogs, RoomAccessPermissions, SystemLogs, SystemSettings } from "./systemModel.js";
 
 // ===============================================
-// ADDITIONAL CROSS-MODEL RELATIONSHIPS
+// RELATIONSHIPS REMOVED TO PREVENT TABLESPACE ISSUES
 // ===============================================
-
-// Users and FaceDatasets relationship (1:many)
-Users.hasMany(FaceDatasets, {
-    foreignKey: 'user_id',
-    as: 'faceDatasets',
-    onDelete: 'CASCADE'
-});
-FaceDatasets.belongsTo(Users, {
-    foreignKey: 'user_id',
-    as: 'user',
-    onDelete: 'CASCADE'
-});
-
-// Users verify FaceDatasets (1:many)
-Users.hasMany(FaceDatasets, {
-    foreignKey: 'verified_by',
-    as: 'verifiedDatasets',
-    onDelete: 'SET NULL'
-});
-FaceDatasets.belongsTo(Users, {
-    foreignKey: 'verified_by',
-    as: 'verifier',
-    onDelete: 'SET NULL'
-});
-
-// Users and FaceRecognitionLogs relationship (1:many)
-Users.hasMany(FaceRecognitionLogs, {
-    foreignKey: 'recognized_user_id',
-    as: 'recognitionLogs',
-    onDelete: 'SET NULL'
-});
-FaceRecognitionLogs.belongsTo(Users, {
-    foreignKey: 'recognized_user_id',
-    as: 'recognizedUser',
-    onDelete: 'SET NULL'
-});
-
-// Users (Students) and StudentEnrollments relationship (1:many)
-Users.hasMany(StudentEnrollments, {
-    foreignKey: 'student_id',
-    as: 'enrollments',
-    onDelete: 'CASCADE',
-    scope: {
-        role: 'student'
-    }
-});
-StudentEnrollments.belongsTo(Users, {
-    foreignKey: 'student_id',
-    as: 'student',
-    onDelete: 'CASCADE'
-});
-
-// Users verify StudentAttendances (1:many)
-Users.hasMany(StudentAttendances, {
-    foreignKey: 'verified_by',
-    as: 'verifiedAttendances',
-    onDelete: 'SET NULL'
-});
-StudentAttendances.belongsTo(Users, {
-    foreignKey: 'verified_by',
-    as: 'verifier',
-    onDelete: 'SET NULL'
-});
-
-// Users (Lecturers) and CourseClasses relationship (1:many)
-Users.hasMany(CourseClasses, {
-    foreignKey: 'lecturer_id',
-    as: 'classes',
-    onDelete: 'SET NULL',
-    scope: {
-        role: 'lecturer'
-    }
-});
-CourseClasses.belongsTo(Users, {
-    foreignKey: 'lecturer_id',
-    as: 'lecturer',
-    onDelete: 'SET NULL'
-});
-
-// Users (Lecturers) and AttendanceSessions relationship (1:many)
-Users.hasMany(AttendanceSessions, {
-    foreignKey: 'created_by',
-    as: 'createdSessions',
-    onDelete: 'SET NULL',
-    scope: {
-        role: 'lecturer'
-    }
-});
-AttendanceSessions.belongsTo(Users, {
-    foreignKey: 'created_by',
-    as: 'creator',
-    onDelete: 'SET NULL'
-});
-
-// Users (Students) and StudentAttendances relationship (1:many)
-Users.hasMany(StudentAttendances, {
-    foreignKey: 'student_id',
-    as: 'attendances',
-    onDelete: 'CASCADE',
-    scope: {
-        role: 'student'
-    }
-});
-StudentAttendances.belongsTo(Users, {
-    foreignKey: 'student_id',
-    as: 'student',
-    onDelete: 'CASCADE'
-});
+// All model relationships have been removed to prevent foreign key constraint issues
+// and tablespace conflicts during database initialization.
+// 
+// Foreign key fields still exist in the tables as regular INTEGER fields
+// but without Sequelize associations to avoid automatic constraint creation.
+//
+// Manual joins can still be performed in queries when needed.
 
 // ===============================================
 // MODEL SYNCHRONIZATION FUNCTION
@@ -162,37 +61,26 @@ const getUserWithRoleDetails = async (userId) => {
  * @returns {Object} Course class with all relations
  */
 const getCourseClassDetails = async (classId) => {
-    const courseClass = await CourseClasses.findByPk(classId, {
-        include: [
-            {
-                model: Courses,
-                as: 'course'
-            },
-            {
-                model: Users,
-                as: 'lecturer',
-                where: { role: 'lecturer' },
-                attributes: ['id', 'user_id', 'full_name', 'email', 'phone', 'department', 'position', 'education_level']
-            },
-            {
-                model: Rooms,
-                as: 'room'
-            },
-            {
-                model: StudentEnrollments,
-                as: 'enrollments',
-                include: [
-                    {
-                        model: Users,
-                        as: 'student',
-                        where: { role: 'student' },
-                        attributes: ['id', 'user_id', 'full_name', 'email', 'program_study', 'semester']
-                    }
-                ]
-            }
-        ]
-    });
-    return courseClass;
+    const courseClass = await CourseClasses.findByPk(classId);
+    
+    if (courseClass) {
+        // Manual joins since we removed associations
+        const course = await Courses.findByPk(courseClass.course_id);
+        const lecturer = await Users.findByPk(courseClass.lecturer_id);
+        const room = await Rooms.findByPk(courseClass.room_id);
+        const enrollments = await StudentEnrollments.findAll({
+            where: { class_id: classId }
+        });
+
+        return {
+            ...courseClass.toJSON(),
+            course,
+            lecturer,
+            room,
+            enrollments
+        };
+    }
+    return null;
 };
 
 /**
@@ -201,43 +89,30 @@ const getCourseClassDetails = async (classId) => {
  * @returns {Object} Attendance session with all relations
  */
 const getAttendanceSessionDetails = async (sessionId) => {
-    const session = await AttendanceSessions.findByPk(sessionId, {
-        include: [
-            {
-                model: CourseClasses,
-                as: 'class',
-                include: [
-                    {
-                        model: Courses,
-                        as: 'course'
-                    }
-                ]
-            },
-            {
-                model: Rooms,
-                as: 'room'
-            },
-            {
-                model: Users,
-                as: 'creator',
-                where: { role: 'lecturer' },
-                attributes: ['id', 'user_id', 'full_name']
-            },
-            {
-                model: StudentAttendances,
-                as: 'attendances',
-                include: [
-                    {
-                        model: Users,
-                        as: 'student',
-                        where: { role: 'student' },
-                        attributes: ['id', 'user_id', 'full_name']
-                    }
-                ]
-            }
-        ]
-    });
-    return session;
+    const session = await AttendanceSessions.findByPk(sessionId);
+    
+    if (session) {
+        // Manual joins since we removed associations
+        const classInfo = await CourseClasses.findByPk(session.class_id);
+        const course = classInfo ? await Courses.findByPk(classInfo.course_id) : null;
+        const room = await Rooms.findByPk(session.room_id);
+        const creator = await Users.findByPk(session.created_by);
+        const attendances = await StudentAttendances.findAll({
+            where: { session_id: sessionId }
+        });
+
+        return {
+            ...session.toJSON(),
+            class: classInfo ? {
+                ...classInfo.toJSON(),
+                course
+            } : null,
+            room,
+            creator,
+            attendances
+        };
+    }
+    return null;
 };
 
 // ===============================================

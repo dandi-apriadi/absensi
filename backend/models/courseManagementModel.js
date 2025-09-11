@@ -149,19 +149,13 @@ const CourseClasses = db.define('course_classes', {
     },
     course_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'courses',
-            key: 'id'
-        },
-        onDelete: 'CASCADE'
-    }, lecturer_id: {
+        allowNull: false,
+        comment: 'Reference to courses table (manual relationship)'
+    },
+    lecturer_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
-        onDelete: 'SET NULL',
-        comment: 'Reference to users table where role = lecturer'
+        allowNull: true,
+        comment: 'Reference to users table where role = lecturer (manual relationship)'
     },
     class_name: {
         type: DataTypes.STRING(10),
@@ -182,11 +176,8 @@ const CourseClasses = db.define('course_classes', {
     },
     room_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'rooms',
-            key: 'id'
-        },
-        allowNull: true
+        allowNull: true,
+        comment: 'Reference to rooms table (manual relationship)'
     },
     schedule: {
         type: DataTypes.JSON,
@@ -222,22 +213,15 @@ const StudentEnrollments = db.define('student_enrollments', {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true
-    }, student_id: {
+    },    student_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
-        onDelete: 'CASCADE',
-        comment: 'Reference to users table where role = student'
+        allowNull: false,
+        comment: 'Reference to users table where role = student (manual relationship)'
     },
     class_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'course_classes',
-            key: 'id'
-        },
-        onDelete: 'CASCADE'
+        allowNull: false,
+        comment: 'Reference to course_classes table (manual relationship)'
     },
     enrollment_date: {
         type: DataTypes.DATE,
@@ -269,45 +253,20 @@ const StudentEnrollments = db.define('student_enrollments', {
 });
 
 // ===============================================
-// RELATIONSHIPS - RELASI ANTAR TABEL
+// RELATIONSHIPS REMOVED TO PREVENT TABLESPACE ISSUES
 // ===============================================
-
-// Course has many CourseClasses (1:many)
-Courses.hasMany(CourseClasses, {
-    foreignKey: 'course_id',
-    as: 'classes',
-    onDelete: 'CASCADE'
-});
-CourseClasses.belongsTo(Courses, {
-    foreignKey: 'course_id',
-    as: 'course',
-    onDelete: 'CASCADE'
-});
-
-// Note: Lecturer relationship akan didefinisikan di index.js menggunakan Users model
-
-// Room has many CourseClasses (1:many)
-Rooms.hasMany(CourseClasses, {
-    foreignKey: 'room_id',
-    as: 'classes',
-    onDelete: 'SET NULL'
-});
-CourseClasses.belongsTo(Rooms, {
-    foreignKey: 'room_id',
-    as: 'room',
-    onDelete: 'SET NULL'
-});
-
-// CourseClass has many StudentEnrollments (1:many)
-CourseClasses.hasMany(StudentEnrollments, {
-    foreignKey: 'class_id',
-    as: 'enrollments',
-    onDelete: 'CASCADE'
-});
-StudentEnrollments.belongsTo(CourseClasses, {
-    foreignKey: 'class_id',
-    as: 'class',
-    onDelete: 'CASCADE'
-});
+// All model relationships have been removed to prevent foreign key constraint issues
+// and tablespace conflicts during database initialization.
+// 
+// Foreign key fields still exist in the tables as regular INTEGER fields
+// but without Sequelize associations to avoid automatic constraint creation.
+//
+// Manual joins can still be performed in queries when needed:
+// 
+// Example manual joins:
+// const courseClass = await CourseClasses.findByPk(classId);
+// const course = await Courses.findByPk(courseClass.course_id);
+// const lecturer = await Users.findByPk(courseClass.lecturer_id);
+// const room = await Rooms.findByPk(courseClass.room_id);
 
 export { Courses, Rooms, CourseClasses, StudentEnrollments };

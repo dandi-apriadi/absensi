@@ -1,8 +1,5 @@
 import { Sequelize } from "sequelize";
 import db from "../config/Database.js";
-import { CourseClasses } from "./courseManagementModel.js";
-import { Users } from "./userManagementModel.js";
-import { Rooms } from "./courseManagementModel.js";
 
 const { DataTypes } = Sequelize;
 
@@ -17,11 +14,8 @@ const AttendanceSessions = db.define('attendance_sessions', {
     },
     class_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'course_classes',
-            key: 'id'
-        },
-        onDelete: 'CASCADE'
+        allowNull: false,
+        comment: 'Reference to course_classes table (manual relationship)'
     },
     session_number: {
         type: DataTypes.INTEGER,
@@ -42,11 +36,8 @@ const AttendanceSessions = db.define('attendance_sessions', {
     },
     room_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'rooms',
-            key: 'id'
-        },
-        allowNull: true
+        allowNull: true,
+        comment: 'Reference to rooms table (manual relationship)'
     },
     topic: {
         type: DataTypes.STRING(200),
@@ -85,14 +76,10 @@ const AttendanceSessions = db.define('attendance_sessions', {
     notes: {
         type: DataTypes.TEXT,
         allowNull: true
-    }, created_by: {
+    },    created_by: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
-        onDelete: 'SET NULL',
-        comment: 'Reference to users table where role = lecturer'
+        allowNull: true,
+        comment: 'Reference to users table where role = lecturer (manual relationship)'
     }
 }, {
     timestamps: true,
@@ -122,19 +109,13 @@ const StudentAttendances = db.define('student_attendances', {
     },
     session_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'attendance_sessions',
-            key: 'id'
-        },
-        onDelete: 'CASCADE'
-    }, student_id: {
+        allowNull: false,
+        comment: 'Reference to attendance_sessions table (manual relationship)'
+    },
+    student_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
-        onDelete: 'CASCADE',
-        comment: 'Reference to users table where role = student'
+        allowNull: false,
+        comment: 'Reference to users table where role = student (manual relationship)'
     },
     status: {
         type: DataTypes.ENUM('present', 'absent', 'late', 'excused', 'sick'),
@@ -171,12 +152,8 @@ const StudentAttendances = db.define('student_attendances', {
     },
     verified_by: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
         allowNull: true,
-        comment: 'Who verified manual attendance'
+        comment: 'Reference to users table - who verified manual attendance (manual relationship)'
     },
     verified_at: {
         type: DataTypes.DATE,
@@ -210,11 +187,8 @@ const FaceDatasets = db.define('face_datasets', {
     },
     user_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
-        onDelete: 'CASCADE'
+        allowNull: false,
+        comment: 'Reference to users table (manual relationship)'
     },
     image_path: {
         type: DataTypes.STRING(255),
@@ -249,11 +223,8 @@ const FaceDatasets = db.define('face_datasets', {
     },
     verified_by: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
-        allowNull: true
+        allowNull: true,
+        comment: 'Reference to users table - who verified the face dataset (manual relationship)'
     },
     verified_at: {
         type: DataTypes.DATE,
@@ -291,19 +262,13 @@ const FaceRecognitionLogs = db.define('face_recognition_logs', {
     },
     session_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'attendance_sessions',
-            key: 'id'
-        },
-        onDelete: 'CASCADE'
+        allowNull: false,
+        comment: 'Reference to attendance_sessions table (manual relationship)'
     },
     recognized_user_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
-        allowNull: true
+        allowNull: true,
+        comment: 'Reference to users table - recognized user (manual relationship)'
     },
     confidence_score: {
         type: DataTypes.DECIMAL(5, 4),
@@ -328,11 +293,8 @@ const FaceRecognitionLogs = db.define('face_recognition_logs', {
     },
     room_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'rooms',
-            key: 'id'
-        },
-        allowNull: true
+        allowNull: true,
+        comment: 'Reference to rooms table (manual relationship)'
     }
 }, {
     timestamps: true,
@@ -355,71 +317,21 @@ const FaceRecognitionLogs = db.define('face_recognition_logs', {
 });
 
 // ===============================================
-// RELATIONSHIPS - RELASI ANTAR TABEL
+// RELATIONSHIPS REMOVED TO PREVENT TABLESPACE ISSUES
 // ===============================================
-
-// CourseClass has many AttendanceSessions (1:many)
-CourseClasses.hasMany(AttendanceSessions, {
-    foreignKey: 'class_id',
-    as: 'sessions',
-    onDelete: 'CASCADE'
-});
-AttendanceSessions.belongsTo(CourseClasses, {
-    foreignKey: 'class_id',
-    as: 'class',
-    onDelete: 'CASCADE'
-});
-
-// Room has many AttendanceSessions (1:many)
-Rooms.hasMany(AttendanceSessions, {
-    foreignKey: 'room_id',
-    as: 'sessions',
-    onDelete: 'SET NULL'
-});
-AttendanceSessions.belongsTo(Rooms, {
-    foreignKey: 'room_id',
-    as: 'room',
-    onDelete: 'SET NULL'
-});
-
-// Note: Lecturer relationship akan didefinisikan di index.js menggunakan Users model
-
-// AttendanceSession has many StudentAttendances (1:many)
-AttendanceSessions.hasMany(StudentAttendances, {
-    foreignKey: 'session_id',
-    as: 'attendances',
-    onDelete: 'CASCADE'
-});
-StudentAttendances.belongsTo(AttendanceSessions, {
-    foreignKey: 'session_id', as: 'session',
-    onDelete: 'CASCADE'
-});
-
-// Note: Student-StudentAttendances relationship akan didefinisikan di index.js menggunakan Users model
-
-// AttendanceSession has many FaceRecognitionLogs (1:many)
-AttendanceSessions.hasMany(FaceRecognitionLogs, {
-    foreignKey: 'session_id',
-    as: 'recognitionLogs',
-    onDelete: 'CASCADE'
-});
-FaceRecognitionLogs.belongsTo(AttendanceSessions, {
-    foreignKey: 'session_id',
-    as: 'session',
-    onDelete: 'CASCADE'
-});
-
-// Room has many FaceRecognitionLogs (1:many)
-Rooms.hasMany(FaceRecognitionLogs, {
-    foreignKey: 'room_id',
-    as: 'recognitionLogs',
-    onDelete: 'SET NULL'
-});
-FaceRecognitionLogs.belongsTo(Rooms, {
-    foreignKey: 'room_id',
-    as: 'room',
-    onDelete: 'SET NULL'
-});
+// All model relationships have been removed to prevent foreign key constraint issues
+// and tablespace conflicts during database initialization.
+// 
+// Foreign key fields still exist in the tables as regular INTEGER fields
+// but without Sequelize associations to avoid automatic constraint creation.
+//
+// Manual joins can still be performed in queries when needed:
+// 
+// Example manual joins:
+// const session = await AttendanceSessions.findByPk(sessionId);
+// const courseClass = await CourseClasses.findByPk(session.class_id);
+// const room = await Rooms.findByPk(session.room_id);
+// const creator = await Users.findByPk(session.created_by);
 
 export {
     AttendanceSessions,

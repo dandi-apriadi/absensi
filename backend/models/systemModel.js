@@ -1,7 +1,5 @@
 import { Sequelize } from "sequelize";
 import db from "../config/Database.js";
-import { Users } from "./userManagementModel.js";
-import { Rooms } from "./courseManagementModel.js";
 
 const { DataTypes } = Sequelize;
 
@@ -16,20 +14,13 @@ const Notifications = db.define('notifications', {
     },
     recipient_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
-        onDelete: 'CASCADE'
+        allowNull: false,
+        comment: 'Reference to users table (manual relationship)'
     },
     sender_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
         allowNull: true,
-        onDelete: 'SET NULL'
+        comment: 'Reference to users table - sender (manual relationship)'
     },
     type: {
         type: DataTypes.ENUM(
@@ -116,20 +107,13 @@ const DoorAccessLogs = db.define('door_access_logs', {
     },
     room_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'rooms',
-            key: 'id'
-        },
-        onDelete: 'CASCADE'
+        allowNull: false,
+        comment: 'Reference to rooms table (manual relationship)'
     },
     user_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
         allowNull: true,
-        onDelete: 'SET NULL'
+        comment: 'Reference to users table (manual relationship)'
     },
     access_type: {
         type: DataTypes.ENUM('face_recognition', 'keycard', 'manual_override', 'emergency'),
@@ -154,12 +138,8 @@ const DoorAccessLogs = db.define('door_access_logs', {
     },
     session_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'attendance_sessions',
-            key: 'id'
-        },
         allowNull: true,
-        comment: 'Related attendance session if applicable'
+        comment: 'Reference to attendance_sessions table if applicable (manual relationship)'
     }
 }, {
     timestamps: false,
@@ -190,19 +170,13 @@ const RoomAccessPermissions = db.define('room_access_permissions', {
     },
     user_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
-        onDelete: 'CASCADE'
+        allowNull: false,
+        comment: 'Reference to users table (manual relationship)'
     },
     room_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'rooms',
-            key: 'id'
-        },
-        onDelete: 'CASCADE'
+        allowNull: false,
+        comment: 'Reference to rooms table (manual relationship)'
     },
     permission_type: {
         type: DataTypes.ENUM('full_access', 'scheduled_access', 'limited_access'),
@@ -223,11 +197,8 @@ const RoomAccessPermissions = db.define('room_access_permissions', {
     },
     granted_by: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
-        onDelete: 'SET NULL'
+        allowNull: true,
+        comment: 'Reference to users table - who granted the permission (manual relationship)'
     },
     is_active: {
         type: DataTypes.BOOLEAN,
@@ -261,12 +232,8 @@ const SystemLogs = db.define('system_logs', {
     },
     user_id: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
         allowNull: true,
-        onDelete: 'SET NULL'
+        comment: 'Reference to users table (manual relationship)'
     },
     action: {
         type: DataTypes.STRING(100),
@@ -367,12 +334,8 @@ const SystemSettings = db.define('system_settings', {
     },
     updated_by: {
         type: DataTypes.INTEGER,
-        references: {
-            model: 'users',
-            key: 'id'
-        },
         allowNull: true,
-        onDelete: 'SET NULL'
+        comment: 'Reference to users table - who updated the setting (manual relationship)'
     }
 }, {
     timestamps: true,
@@ -392,116 +355,20 @@ const SystemSettings = db.define('system_settings', {
 });
 
 // ===============================================
-// RELATIONSHIPS - RELASI ANTAR TABEL
+// RELATIONSHIPS REMOVED TO PREVENT TABLESPACE ISSUES
 // ===============================================
-
-// User has many Notifications as recipient (1:many)
-Users.hasMany(Notifications, {
-    foreignKey: 'recipient_id',
-    as: 'receivedNotifications',
-    onDelete: 'CASCADE'
-});
-Notifications.belongsTo(Users, {
-    foreignKey: 'recipient_id',
-    as: 'recipient',
-    onDelete: 'CASCADE'
-});
-
-// User has many Notifications as sender (1:many)
-Users.hasMany(Notifications, {
-    foreignKey: 'sender_id',
-    as: 'sentNotifications',
-    onDelete: 'SET NULL'
-});
-Notifications.belongsTo(Users, {
-    foreignKey: 'sender_id',
-    as: 'sender',
-    onDelete: 'SET NULL'
-});
-
-// Room has many DoorAccessLogs (1:many)
-Rooms.hasMany(DoorAccessLogs, {
-    foreignKey: 'room_id',
-    as: 'accessLogs',
-    onDelete: 'CASCADE'
-});
-DoorAccessLogs.belongsTo(Rooms, {
-    foreignKey: 'room_id',
-    as: 'room',
-    onDelete: 'CASCADE'
-});
-
-// User has many DoorAccessLogs (1:many)
-Users.hasMany(DoorAccessLogs, {
-    foreignKey: 'user_id',
-    as: 'accessLogs',
-    onDelete: 'SET NULL'
-});
-DoorAccessLogs.belongsTo(Users, {
-    foreignKey: 'user_id',
-    as: 'user',
-    onDelete: 'SET NULL'
-});
-
-// User has many RoomAccessPermissions (1:many)
-Users.hasMany(RoomAccessPermissions, {
-    foreignKey: 'user_id',
-    as: 'roomPermissions',
-    onDelete: 'CASCADE'
-});
-RoomAccessPermissions.belongsTo(Users, {
-    foreignKey: 'user_id',
-    as: 'user',
-    onDelete: 'CASCADE'
-});
-
-// Room has many RoomAccessPermissions (1:many)
-Rooms.hasMany(RoomAccessPermissions, {
-    foreignKey: 'room_id',
-    as: 'accessPermissions',
-    onDelete: 'CASCADE'
-});
-RoomAccessPermissions.belongsTo(Rooms, {
-    foreignKey: 'room_id',
-    as: 'room',
-    onDelete: 'CASCADE'
-});
-
-// User granted permissions (1:many)
-Users.hasMany(RoomAccessPermissions, {
-    foreignKey: 'granted_by',
-    as: 'grantedPermissions',
-    onDelete: 'SET NULL'
-});
-RoomAccessPermissions.belongsTo(Users, {
-    foreignKey: 'granted_by',
-    as: 'grantor',
-    onDelete: 'SET NULL'
-});
-
-// User has many SystemLogs (1:many)
-Users.hasMany(SystemLogs, {
-    foreignKey: 'user_id',
-    as: 'systemLogs',
-    onDelete: 'SET NULL'
-});
-SystemLogs.belongsTo(Users, {
-    foreignKey: 'user_id',
-    as: 'user',
-    onDelete: 'SET NULL'
-});
-
-// User updated SystemSettings (1:many)
-Users.hasMany(SystemSettings, {
-    foreignKey: 'updated_by',
-    as: 'updatedSettings',
-    onDelete: 'SET NULL'
-});
-SystemSettings.belongsTo(Users, {
-    foreignKey: 'updated_by',
-    as: 'updater',
-    onDelete: 'SET NULL'
-});
+// All model relationships have been removed to prevent foreign key constraint issues
+// and tablespace conflicts during database initialization.
+// 
+// Foreign key fields still exist in the tables as regular INTEGER fields
+// but without Sequelize associations to avoid automatic constraint creation.
+//
+// Manual joins can still be performed in queries when needed:
+// 
+// Example manual joins:
+// const notification = await Notifications.findByPk(notificationId);
+// const recipient = await Users.findByPk(notification.recipient_id);
+// const sender = await Users.findByPk(notification.sender_id);
 
 export {
     Notifications,
