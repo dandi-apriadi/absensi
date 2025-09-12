@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { loginUser, reset } from "../../store/slices/authSlice";
-import { FcGoogle } from "react-icons/fc";
+import { FcGoogle } from "react-icons/fc";  
 import { MdFace, MdEmail, MdLock } from "react-icons/md";
 import Checkbox from "components/checkbox";
 import Swal from 'sweetalert2';

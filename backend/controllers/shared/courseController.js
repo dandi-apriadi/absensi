@@ -3,7 +3,6 @@ import {
     CourseClasses,
     Users,
     StudentEnrollments,
-    AttendanceSessions,
     db
 } from "../../models/index.js";
 import { Op } from "sequelize";
@@ -17,39 +16,28 @@ import { Op } from "sequelize";
  */
 export const getCourses = async (req, res) => {
     try {
-        const { page = 1, limit = 10, search, semester, lecturer_id } = req.query;
+    const { page = 1, limit = 10, search, semester, program_study, status } = req.query;
         const offset = (page - 1) * limit;
 
         let whereClause = {};
 
         if (search) {
             whereClause[Op.or] = [
-                { course_name: { [Op.iLike]: `%${search}%` } },
-                { course_code: { [Op.iLike]: `%${search}%` } }
+        { course_name: { [Op.like]: `%${search}%` } },
+        { course_code: { [Op.like]: `%${search}%` } }
             ];
         }
 
-        if (semester) {
-            whereClause.semester = semester;
-        }
+    if (semester) whereClause.semester = semester;
+    if (program_study) whereClause.program_study = program_study;
+    if (status) whereClause.status = status;
 
-        if (lecturer_id) {
-            whereClause.lecturer_id = lecturer_id;
-        }
-
-        const courses = await Courses.findAndCountAll({
-            where: whereClause,
-            order: [['course_name', 'ASC']],
-            limit: parseInt(limit),
-            offset: offset, include: [
-                {
-                    model: Users,
-                    as: 'lecturer',
-                    where: { role: 'lecturer' },
-                    attributes: ['id', 'user_id', 'full_name', 'email', 'department', 'position']
-                }
-            ]
-        });
+    const courses = await Courses.findAndCountAll({
+        where: whereClause,
+        order: [["course_name", "ASC"]],
+        limit: parseInt(limit),
+        offset: offset
+    });
 
         res.status(200).json({
             success: true,
@@ -90,14 +78,12 @@ export const createCourse = async (req, res) => {
             description,
             credits,
             semester,
-            academic_year,
-            lecturer_id,
-            department,
+            program_study,
             prerequisites
         } = req.body;
 
         // Validation
-        if (!course_code || !course_name || !credits || !semester || !academic_year || !lecturer_id) {
+        if (!course_code || !course_name || !credits || !semester || !program_study) {
             return res.status(400).json({
                 success: false,
                 message: "Semua field wajib harus diisi"
@@ -114,18 +100,6 @@ export const createCourse = async (req, res) => {
                 success: false,
                 message: "Kode mata kuliah sudah ada"
             });
-        }        // Check if lecturer exists
-        const lecturer = await Users.findOne({
-            where: {
-                id: lecturer_id,
-                role: 'lecturer'
-            }
-        });
-        if (!lecturer) {
-            return res.status(404).json({
-                success: false,
-                message: "Dosen tidak ditemukan"
-            });
         }
 
         const course = await Courses.create({
@@ -134,9 +108,7 @@ export const createCourse = async (req, res) => {
             description,
             credits,
             semester,
-            academic_year,
-            lecturer_id,
-            department,
+            program_study,
             prerequisites: prerequisites || null,
             status: 'active'
         });
@@ -160,7 +132,7 @@ export const createCourse = async (req, res) => {
  */
 export const updateCourse = async (req, res) => {
     try {
-        if (req.session.role !== 'super-admin') {
+    if (req.session.role !== 'super-admin') {
             return res.status(403).json({
                 success: false,
                 message: "Akses ditolak. Hanya super admin yang dapat mengubah mata kuliah"
@@ -176,20 +148,6 @@ export const updateCourse = async (req, res) => {
                 success: false,
                 message: "Mata kuliah tidak ditemukan"
             });
-        }        // If updating lecturer_id, check if lecturer exists
-        if (updateData.lecturer_id && updateData.lecturer_id !== course.lecturer_id) {
-            const lecturer = await Users.findOne({
-                where: {
-                    id: updateData.lecturer_id,
-                    role: 'lecturer'
-                }
-            });
-            if (!lecturer) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Dosen tidak ditemukan"
-                });
-            }
         }
 
         await course.update(updateData);
@@ -213,7 +171,7 @@ export const updateCourse = async (req, res) => {
  */
 export const deleteCourse = async (req, res) => {
     try {
-        if (req.session.role !== 'super-admin') {
+    if (req.session.role !== 'super-admin') {
             return res.status(403).json({
                 success: false,
                 message: "Akses ditolak. Hanya super admin yang dapat menghapus mata kuliah"
@@ -231,12 +189,7 @@ export const deleteCourse = async (req, res) => {
         }
 
         // Check if there are active classes for this course
-        const activeClasses = await CourseClasses.count({
-            where: {
-                course_id: id,
-                status: 'active'
-            }
-        });
+    const activeClasses = await CourseClasses.count({ where: { course_id: id, status: 'active' } });
 
         if (activeClasses > 0) {
             return res.status(400).json({
@@ -276,16 +229,9 @@ export const getCourseClasses = async (req, res) => {
 
         const classes = await CourseClasses.findAndCountAll({
             where: whereClause,
-            order: [['class_name', 'ASC']],
+            order: [["class_name", "ASC"]],
             limit: parseInt(limit),
-            offset: offset,
-            include: [
-                {
-                    model: Courses,
-                    as: 'course',
-                    attributes: ['course_name', 'course_code', 'credits']
-                }
-            ]
+            offset: offset
         });
 
         res.status(200).json({
@@ -324,106 +270,44 @@ export const createCourseClass = async (req, res) => {
         const {
             course_id,
             class_name,
-            class_code,
-            room_id,
-            schedule_day,
-            start_time,
-            end_time,
+            lecturer_id,
+            academic_year,
+            semester_period,
             max_students,
-            semester,
-            academic_year
+            schedule // [{ day, start_time, end_time }]
         } = req.body;
 
-        const userId = req.session.userId;
-
         // Validation
-        if (!course_id || !class_name || !schedule_day || !start_time || !end_time) {
+        if (!course_id || !class_name || !academic_year || !semester_period) {
             return res.status(400).json({
                 success: false,
                 message: "Semua field wajib harus diisi"
             });
-        }        // Check if course exists and user has access (for lecturers)
-        let whereClause = { id: course_id };
-        if (req.session.role === 'lecturer') {
-            // Get lecturer ID from user session
-            const lecturer = await Users.findOne({
-                where: {
-                    id: userId,
-                    role: 'lecturer'
-                }
-            });
-            if (!lecturer) {
-                return res.status(403).json({
-                    success: false,
-                    message: "Data dosen tidak ditemukan"
-                });
-            }
-            whereClause.lecturer_id = lecturer.id;
         }
 
-        const course = await Courses.findOne({ where: whereClause });
+        // Course must exist
+        const course = await Courses.findByPk(course_id);
         if (!course) {
             return res.status(404).json({
                 success: false,
-                message: "Mata kuliah tidak ditemukan atau Anda tidak memiliki akses"
+                message: "Mata kuliah tidak ditemukan"
             });
         }
 
-        // Check if room exists (if specified)
-        if (room_id) {
-            const room = await Rooms.findByPk(room_id);
-            if (!room) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Ruangan tidak ditemukan"
-                });
-            }
-        }
-
-        // Check for schedule conflicts
-        const conflictingClass = await CourseClasses.findOne({
-            where: {
-                room_id,
-                schedule_day,
-                [Op.or]: [
-                    {
-                        start_time: {
-                            [Op.between]: [start_time, end_time]
-                        }
-                    },
-                    {
-                        end_time: {
-                            [Op.between]: [start_time, end_time]
-                        }
-                    },
-                    {
-                        [Op.and]: [
-                            { start_time: { [Op.lte]: start_time } },
-                            { end_time: { [Op.gte]: end_time } }
-                        ]
-                    }
-                ]
-            }
-        });
-
-        if (conflictingClass) {
-            return res.status(400).json({
-                success: false,
-                message: "Jadwal bentrok dengan kelas lain di ruangan yang sama"
-            });
+        // Normalize schedule
+        let normalizedSchedule = schedule;
+        if (!Array.isArray(normalizedSchedule) || normalizedSchedule.length === 0) {
+            normalizedSchedule = [];
         }
 
         const courseClass = await CourseClasses.create({
             course_id,
+            lecturer_id: lecturer_id || null,
             class_name,
-            class_code,
-            room_id,
-            schedule_day,
-            start_time,
-            end_time,
+            academic_year,
+            semester_period,
             max_students: max_students || 40,
-            semester: semester || course.semester,
-            academic_year: academic_year || course.academic_year,
+            schedule: normalizedSchedule,
             status: 'active'
         });
 
@@ -450,41 +334,38 @@ export const getClassEnrollments = async (req, res) => {
         const { page = 1, limit = 50, status } = req.query;
         const offset = (page - 1) * limit;
 
-        let whereClause = { course_class_id: class_id };
+        let whereClause = { class_id };
         if (status) {
             whereClause.status = status;
         }
 
         const enrollments = await StudentEnrollments.findAndCountAll({
             where: whereClause,
-            order: [['enrolled_at', 'ASC']],
+            order: [["enrollment_date", "ASC"]],
             limit: parseInt(limit),
-            offset: offset, include: [
-                {
-                    model: Users,
-                    as: 'student',
-                    where: { role: 'student' },
-                    attributes: ['id', 'user_id', 'full_name', 'email', 'program_study', 'semester']
-                },
-                {
-                    model: CourseClasses,
-                    as: 'courseClass',
-                    attributes: ['class_name', 'class_code'],
-                    include: [
-                        {
-                            model: Courses,
-                            as: 'course',
-                            attributes: ['course_name', 'course_code']
-                        }
-                    ]
-                }
-            ]
+            offset: offset
         });
+
+        // Enrich with student basic info (manual join)
+        const rows = await Promise.all(enrollments.rows.map(async (e) => {
+            const student = await Users.findByPk(e.student_id);
+            return {
+                ...e.toJSON(),
+                student: student ? {
+                    id: student.id,
+                    user_id: student.user_id,
+                    full_name: student.full_name,
+                    email: student.email,
+                    program_study: student.program_study,
+                    semester: student.semester
+                } : null
+            };
+        }));
 
         res.status(200).json({
             success: true,
             data: {
-                enrollments: enrollments.rows,
+                enrollments: rows,
                 pagination: {
                     total: enrollments.count,
                     page: parseInt(page),
@@ -507,9 +388,9 @@ export const getClassEnrollments = async (req, res) => {
  */
 export const enrollStudent = async (req, res) => {
     try {
-        const { class_id, student_id } = req.body;
-        const userRole = req.session.role;
-        const userId = req.session.userId;
+    const { class_id, student_id } = req.body;
+    const userRole = req.session.role;
+    const userId = req.session.userId;
 
         // Validation
         if (!class_id || !student_id) {
@@ -519,20 +400,17 @@ export const enrollStudent = async (req, res) => {
             });
         }
 
-        // Check if class exists
-        const courseClass = await CourseClasses.findByPk(class_id);
+    // Check if class exists
+    const courseClass = await CourseClasses.findByPk(class_id);
         if (!courseClass) {
             return res.status(404).json({
                 success: false,
                 message: "Kelas tidak ditemukan"
             });
-        }        // Check if student exists
-        const student = await Users.findOne({
-            where: {
-                id: student_id,
-                role: 'student'
-            }
-        });
+    }
+
+    // Check if student exists
+    const student = await Users.findOne({ where: { id: student_id, role: 'student' } });
         if (!student) {
             return res.status(404).json({
                 success: false,
@@ -550,7 +428,7 @@ export const enrollStudent = async (req, res) => {
 
         // Check if already enrolled
         const existingEnrollment = await StudentEnrollments.findOne({
-            where: { course_class_id: class_id, student_id }
+            where: { class_id, student_id }
         });
 
         if (existingEnrollment) {
@@ -561,12 +439,7 @@ export const enrollStudent = async (req, res) => {
         }
 
         // Check class capacity
-        const currentEnrollments = await StudentEnrollments.count({
-            where: {
-                course_class_id: class_id,
-                status: { [Op.in]: ['enrolled', 'active'] }
-            }
-        });
+    const currentEnrollments = await StudentEnrollments.count({ where: { class_id, status: { [Op.in]: ['enrolled', 'active'] } } });
 
         if (currentEnrollments >= courseClass.max_students) {
             return res.status(400).json({
@@ -576,15 +449,15 @@ export const enrollStudent = async (req, res) => {
         }
 
         const enrollment = await StudentEnrollments.create({
-            course_class_id: class_id,
+            class_id,
             student_id,
-            enrolled_at: new Date(),
-            status: userRole === 'super-admin' ? 'enrolled' : 'pending'
+            enrollment_date: new Date(),
+            status: 'enrolled'
         });
 
         res.status(201).json({
             success: true,
-            message: userRole === 'super-admin' ? "Mahasiswa berhasil didaftarkan ke kelas" : "Pendaftaran berhasil diajukan",
+            message: "Mahasiswa berhasil didaftarkan ke kelas",
             data: enrollment
         });
     } catch (error) {
@@ -601,7 +474,7 @@ export const enrollStudent = async (req, res) => {
  */
 export const updateEnrollmentStatus = async (req, res) => {
     try {
-        if (req.session.role !== 'super-admin' && req.session.role !== 'lecturer') {
+    if (req.session.role !== 'super-admin' && req.session.role !== 'lecturer') {
             return res.status(403).json({
                 success: false,
                 message: "Akses ditolak. Hanya admin atau dosen yang dapat mengubah status pendaftaran"
@@ -611,7 +484,7 @@ export const updateEnrollmentStatus = async (req, res) => {
         const { id } = req.params;
         const { status } = req.body;
 
-        const enrollment = await StudentEnrollments.findByPk(id);
+    const enrollment = await StudentEnrollments.findByPk(id);
         if (!enrollment) {
             return res.status(404).json({
                 success: false,
@@ -619,7 +492,7 @@ export const updateEnrollmentStatus = async (req, res) => {
             });
         }
 
-        await enrollment.update({ status });
+    await enrollment.update({ status });
 
         res.status(200).json({
             success: true,

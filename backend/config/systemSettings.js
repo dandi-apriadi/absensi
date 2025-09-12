@@ -6,6 +6,9 @@
 // ===============================================
 // SYSTEM CONFIGURATION CONSTANTS
 // ===============================================
+const RUNTIME_PORT = parseInt(process.env.APP_PORT || process.env.PORT || '5001', 10);
+const DERIVED_BASE_URL = process.env.BASE_URL || `http://localhost:${RUNTIME_PORT}`;
+
 export const SYSTEM_CONFIG = {
     
     // ===============================================
@@ -111,8 +114,8 @@ export const SYSTEM_CONFIG = {
         NAME: process.env.APP_NAME || 'Sistem Absensi',
         VERSION: process.env.APP_VERSION || '1.0.0',
         ENVIRONMENT: process.env.NODE_ENV || 'development',
-        PORT: parseInt(process.env.PORT) || 3000,
-        BASE_URL: process.env.BASE_URL || 'http://localhost:3000',
+    PORT: RUNTIME_PORT,
+    BASE_URL: DERIVED_BASE_URL,
         API_PREFIX: process.env.API_PREFIX || '/api',
         TIMEZONE: process.env.TIMEZONE || 'Asia/Jakarta'
     }

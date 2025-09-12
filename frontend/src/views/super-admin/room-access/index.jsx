@@ -1,379 +1,167 @@
-import React, { useEffect } from "react";
-import { Link } from "react-router-dom";
-import { MdMeetingRoom, MdLock, MdHistory, MdMonitor, MdDoorbell, MdSecurity, MdWarning } from "react-icons/md";
+import React, { useEffect, useMemo, useState } from "react";
+import { MdMeetingRoom, MdSecurity, MdWarning, MdGroups, MdAccessTime, MdInfo, MdRefresh } from "react-icons/md";
 import AOS from "aos";
 import "aos/dist/aos.css";
 
 const RoomAccess = () => {
     useEffect(() => {
-        AOS.init({
-            duration: 800,
-            once: true,
-        });
+        AOS.init({ duration: 600, once: true });
     }, []);
 
-    // Dummy data for room status
-    const roomsData = [
+    // Single door concept: we only have 1 physical door, classes are scheduled users of that door
+    const [filter, setFilter] = useState("all");
+    const [search, setSearch] = useState("");
+    const doorStatus = "locked"; // could be fetched later
+    const doorHealth = "online"; // online | degraded | offline
+
+    // Dummy merged classes (would come from API: course_classes + courses)
+    const classes = useMemo(() => ([
         {
             id: 1,
-            name: "Lab Komputer 1",
-            status: "Online",
-            doorStatus: "Locked",
-            lastAccess: "15:32:45",
-            lastAccessBy: "Ahmad Fauzi (2021010101)",
-            accessCount: 42,
-            warnings: 0
+            course_code: "IF101",
+            course_name: "Algoritma & Pemrograman",
+            class_name: "A",
+            schedule: [{ day: "Senin", start: "08:00", end: "09:40" }],
+            lecturer: "Dr. Budi",
+            active: true,
+            todayAccessCount: 12,
+            lastAccess: "08:05",
         },
         {
             id: 2,
-            name: "Lab Komputer 2",
-            status: "Online",
-            doorStatus: "Unlocked",
-            lastAccess: "15:45:12",
-            lastAccessBy: "Dr. Budi Santoso (Dosen)",
-            accessCount: 38,
-            warnings: 0
+            course_code: "IF201",
+            course_name: "Struktur Data",
+            class_name: "B",
+            schedule: [{ day: "Selasa", start: "10:00", end: "11:40" }],
+            lecturer: "Dr. Rina",
+            active: true,
+            todayAccessCount: 9,
+            lastAccess: "10:07",
         },
         {
             id: 3,
-            name: "Ruang 2.01",
-            status: "Online",
-            doorStatus: "Locked",
-            lastAccess: "14:15:33",
-            lastAccessBy: "Siti Nurhaliza (2021010102)",
-            accessCount: 25,
-            warnings: 0
+            course_code: "IF301",
+            course_name: "Basis Data",
+            class_name: "A",
+            schedule: [{ day: "Rabu", start: "13:00", end: "14:40" }],
+            lecturer: "Ir. Ahmad",
+            active: false,
+            todayAccessCount: 0,
+            lastAccess: null,
         },
-        {
-            id: 4,
-            name: "Ruang 2.02",
-            status: "Offline",
-            doorStatus: "Unknown",
-            lastAccess: "09:22:18",
-            lastAccessBy: "System Admin",
-            accessCount: 12,
-            warnings: 1
-        },
-        {
-            id: 5,
-            name: "Lab Jaringan",
-            status: "Warning",
-            doorStatus: "Locked",
-            lastAccess: "13:05:51",
-            lastAccessBy: "Indah Permata (2020010101)",
-            accessCount: 31,
-            warnings: 2
-        },
-        {
-            id: 6,
-            name: "Ruang 3.01",
-            status: "Online",
-            doorStatus: "Locked",
-            lastAccess: "11:47:22",
-            lastAccessBy: "Dr. Ahmad Wijaya (Dosen)",
-            accessCount: 18,
-            warnings: 0
-        }
-    ];
+    ]), []);
 
-    // Function to determine status color
-    const getStatusColor = (status) => {
-        switch (status) {
-            case "Online":
-                return "bg-green-500";
-            case "Offline":
-                return "bg-gray-500";
-            case "Warning":
-                return "bg-yellow-500";
-            default:
-                return "bg-gray-500";
-        }
-    };
+    const filtered = classes.filter(c => {
+        if (filter === 'active' && !c.active) return false;
+        if (filter === 'inactive' && c.active) return false;
+        if (search && !(c.course_name + c.course_code + c.class_name).toLowerCase().includes(search.toLowerCase())) return false;
+        return true;
+    });
 
-    // Function to determine door status color
-    const getDoorStatusColor = (status) => {
-        switch (status) {
-            case "Locked":
-                return "bg-red-100 text-red-800";
-            case "Unlocked":
-                return "bg-green-100 text-green-800";
-            default:
-                return "bg-gray-100 text-gray-800";
-        }
-    };
+    const totalAccess = filtered.reduce((a, c) => a + c.todayAccessCount, 0);
 
     return (
         <div className="p-4 md:p-8">
             <div className="mb-8" data-aos="fade-down">
-                <h1 className="text-3xl font-bold text-gray-800">Manajemen Akses Ruangan</h1>
-                <p className="text-gray-600">Monitor dan kelola akses pintu ruangan</p>
+                <h1 className="text-3xl font-bold text-gray-800">Akses Pintu Kelas</h1>
+                <p className="text-gray-600">Sistem satu pintu: daftar kelas yang memiliki hak akses hari ini.</p>
             </div>
 
-            {/* Status Overview */}
+            {/* Door Overview */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div
-                    className="bg-white rounded-xl shadow-md p-6"
-                    data-aos="fade-up"
-                >
+                <div className="bg-white rounded-xl shadow-md p-6" data-aos="fade-up">
                     <div className="flex items-center">
                         <div className="bg-blue-100 p-4 rounded-full mr-4">
                             <MdMeetingRoom className="h-8 w-8 text-blue-600" />
                         </div>
                         <div>
-                            <p className="text-gray-600 text-sm">Total Ruangan</p>
-                            <h3 className="text-3xl font-bold text-gray-800">{roomsData.length}</h3>
+                            <p className="text-gray-600 text-sm">Total Kelas Terdaftar</p>
+                            <h3 className="text-3xl font-bold text-gray-800">{classes.length}</h3>
                         </div>
                     </div>
-                    <div className="mt-4 flex items-center">
-                        <div className="flex-1">
-                            <div className="h-2 bg-gray-200 rounded-full">
-                                <div className="h-2 bg-blue-500 rounded-full" style={{ width: '100%' }}></div>
-                            </div>
-                        </div>
-                        <span className="ml-2 text-sm text-gray-600">100%</span>
+                    <div className="mt-4 text-xs text-gray-500 flex items-center">
+                        <MdInfo className="mr-1" /> Semua kelas memakai pintu yang sama.
                     </div>
                 </div>
-
-                <div
-                    className="bg-white rounded-xl shadow-md p-6"
-                    data-aos="fade-up"
-                    data-aos-delay="100"
-                >
+                <div className="bg-white rounded-xl shadow-md p-6" data-aos="fade-up" data-aos-delay="100">
                     <div className="flex items-center">
                         <div className="bg-green-100 p-4 rounded-full mr-4">
                             <MdSecurity className="h-8 w-8 text-green-600" />
                         </div>
                         <div>
-                            <p className="text-gray-600 text-sm">Status Online</p>
-                            <h3 className="text-3xl font-bold text-gray-800">
-                                {roomsData.filter(room => room.status === "Online").length}
-                            </h3>
+                            <p className="text-gray-600 text-sm">Status Pintu</p>
+                            <h3 className="text-2xl font-bold text-gray-800 capitalize">{doorStatus}</h3>
                         </div>
                     </div>
-                    <div className="mt-4 flex items-center">
-                        <div className="flex-1">
-                            <div className="h-2 bg-gray-200 rounded-full">
-                                <div
-                                    className="h-2 bg-green-500 rounded-full"
-                                    style={{ width: `${(roomsData.filter(room => room.status === "Online").length / roomsData.length) * 100}%` }}
-                                ></div>
-                            </div>
-                        </div>
-                        <span className="ml-2 text-sm text-gray-600">
-                            {Math.round((roomsData.filter(room => room.status === "Online").length / roomsData.length) * 100)}%
-                        </span>
+                    <div className="mt-4 flex items-center justify-between">
+                        <span className={`text-xs font-medium px-2 py-1 rounded ${doorHealth === 'online' ? 'bg-green-50 text-green-700' : doorHealth === 'degraded' ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700'}`}>Health: {doorHealth}</span>
+                        <button className="text-xs text-blue-600 hover:underline flex items-center"><MdRefresh className="mr-1" /> Refresh</button>
                     </div>
                 </div>
-
-                <div
-                    className="bg-white rounded-xl shadow-md p-6"
-                    data-aos="fade-up"
-                    data-aos-delay="200"
-                >
+                <div className="bg-white rounded-xl shadow-md p-6" data-aos="fade-up" data-aos-delay="200">
                     <div className="flex items-center">
                         <div className="bg-yellow-100 p-4 rounded-full mr-4">
-                            <MdWarning className="h-8 w-8 text-yellow-600" />
+                            <MdAccessTime className="h-8 w-8 text-yellow-600" />
                         </div>
                         <div>
-                            <p className="text-gray-600 text-sm">Peringatan Aktif</p>
-                            <h3 className="text-3xl font-bold text-gray-800">
-                                {roomsData.reduce((acc, room) => acc + room.warnings, 0)}
-                            </h3>
+                            <p className="text-gray-600 text-sm">Total Akses Hari Ini</p>
+                            <h3 className="text-3xl font-bold text-gray-800">{totalAccess}</h3>
                         </div>
                     </div>
-                    <div className="mt-4 flex items-center">
-                        <div className="flex-1">
-                            <div className="h-2 bg-gray-200 rounded-full">
-                                <div
-                                    className="h-2 bg-yellow-500 rounded-full"
-                                    style={{ width: roomsData.reduce((acc, room) => acc + room.warnings, 0) > 0 ? '30%' : '0%' }}
-                                ></div>
-                            </div>
-                        </div>
-                        <span className="ml-2 text-sm text-gray-600">
-                            {roomsData.reduce((acc, room) => acc + room.warnings, 0) > 0 ? 'Perlu perhatian' : 'Semua normal'}
-                        </span>
+                    <div className="mt-4 text-xs text-gray-500">
+                        Dari seluruh kelas yang aktif.
                     </div>
                 </div>
             </div>
 
-            {/* Quick Action Buttons */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <Link to="/super-admin/room-access/access-logs" className="block">
-                    <div
-                        className="bg-white rounded-xl p-6 shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 h-full"
-                        data-aos="fade-up"
-                        data-aos-delay="100"
-                    >
-                        <div className="bg-indigo-100 p-4 rounded-full w-16 h-16 flex justify-center items-center mb-4">
-                            <MdHistory className="h-8 w-8 text-indigo-600" />
-                        </div>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-2">Log Akses</h3>
-                        <p className="text-gray-600">
-                            Lihat riwayat akses pintu ruangan dan lacak aktivitas masuk dan keluar.
-                        </p>
-                        <button className="mt-4 text-indigo-600 font-medium flex items-center">
-                            Lihat Log Akses
-                            <svg className="w-5 h-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                        </button>
-                    </div>
-                </Link>
-
-                <Link to="/super-admin/room-access/access-monitoring" className="block">
-                    <div
-                        className="bg-white rounded-xl p-6 shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 h-full"
-                        data-aos="fade-up"
-                        data-aos-delay="200"
-                    >
-                        <div className="bg-blue-100 p-4 rounded-full w-16 h-16 flex justify-center items-center mb-4">
-                            <MdMonitor className="h-8 w-8 text-blue-600" />
-                        </div>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-2">Monitoring Akses</h3>
-                        <p className="text-gray-600">
-                            Monitor akses ruangan secara real-time dan lihat status pintu saat ini.
-                        </p>
-                        <button className="mt-4 text-blue-600 font-medium flex items-center">
-                            Monitor Akses
-                            <svg className="w-5 h-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                        </button>
-                    </div>
-                </Link>
-
-                <Link to="/super-admin/room-access/door-settings" className="block">
-                    <div
-                        className="bg-white rounded-xl p-6 shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 h-full"
-                        data-aos="fade-up"
-                        data-aos-delay="300"
-                    >
-                        <div className="bg-green-100 p-4 rounded-full w-16 h-16 flex justify-center items-center mb-4">
-                            <MdLock className="h-8 w-8 text-green-600" />
-                        </div>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-2">Konfigurasi Pintu</h3>
-                        <p className="text-gray-600">
-                            Konfigurasi pengaturan akses pintu ruangan dan jadwal pembukaan otomatis.
-                        </p>
-                        <button className="mt-4 text-green-600 font-medium flex items-center">
-                            Konfigurasi Pintu
-                            <svg className="w-5 h-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                        </button>
-                    </div>
-                </Link>
+            {/* Filters */}
+            <div className="bg-white rounded-xl shadow-md p-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4" data-aos="fade-up">
+                <div className="flex items-center gap-2 text-sm">
+                    <button onClick={() => setFilter('all')} className={`px-3 py-1 rounded-full border text-xs ${filter === 'all' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>Semua</button>
+                    <button onClick={() => setFilter('active')} className={`px-3 py-1 rounded-full border text-xs ${filter === 'active' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>Aktif</button>
+                    <button onClick={() => setFilter('inactive')} className={`px-3 py-1 rounded-full border text-xs ${filter === 'inactive' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>Tidak Aktif</button>
+                </div>
+                <div className="flex items-center gap-2 flex-1 md:justify-end">
+                    <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari kelas / kode..." className="w-full md:w-64 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
             </div>
 
-            {/* Room Status Cards */}
-            <div className="mb-4" data-aos="fade-up" data-aos-delay="400">
-                <h2 className="text-xl font-semibold text-gray-800 mb-4">Status Ruangan</h2>
+            {/* Class Access List */}
+            <div data-aos="fade-up" className="space-y-4">
+                <h2 className="text-lg font-semibold text-gray-800">Kelas Memiliki Akses</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {roomsData.map((room) => (
-                        <div key={room.id} className="bg-white rounded-xl shadow-md overflow-hidden">
-                            <div className="p-6">
-                                <div className="flex justify-between items-start">
-                                    <div className="flex items-center">
-                                        <div className={`h-3 w-3 rounded-full ${getStatusColor(room.status)} mr-2`}></div>
-                                        <h3 className="text-lg font-semibold text-gray-800">{room.name}</h3>
-                                    </div>
-                                    <span className={`px-2 py-1 text-xs rounded-full ${getDoorStatusColor(room.doorStatus)}`}>
-                                        {room.doorStatus}
-                                    </span>
+                    {filtered.map(cls => (
+                        <div key={cls.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col">
+                            <div className="flex items-start justify-between mb-3">
+                                <div>
+                                    <h3 className="font-semibold text-gray-800">{cls.course_code} - {cls.class_name}</h3>
+                                    <p className="text-sm text-gray-600 line-clamp-1">{cls.course_name}</p>
                                 </div>
-                                <div className="mt-4">
-                                    <div className="flex justify-between text-sm text-gray-600 mb-2">
-                                        <span>Last Access:</span>
-                                        <span>{room.lastAccess}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm text-gray-600 mb-2">
-                                        <span>Access By:</span>
-                                        <span className="truncate max-w-[150px]" title={room.lastAccessBy}>{room.lastAccessBy}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm text-gray-600 mb-2">
-                                        <span>Today's Count:</span>
-                                        <span>{room.accessCount}</span>
-                                    </div>
-                                    {room.warnings > 0 && (
-                                        <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-2 flex items-center">
-                                            <MdWarning className="text-yellow-500 mr-2" />
-                                            <span className="text-sm text-yellow-700">{room.warnings} warnings detected</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="mt-4 grid grid-cols-2 gap-2">
-                                    <button className="bg-blue-600 text-white text-sm py-1 px-3 rounded-lg hover:bg-blue-700 transition-colors">
-                                        View Details
-                                    </button>
-                                    <button className="bg-gray-100 text-gray-800 text-sm py-1 px-3 rounded-lg hover:bg-gray-200 transition-colors">
-                                        Force Lock
-                                    </button>
-                                </div>
+                                <span className={`text-xs px-2 py-1 rounded-full ${cls.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{cls.active ? 'Aktif' : 'Nonaktif'}</span>
+                            </div>
+                            <div className="text-xs space-y-1 mb-3">
+                                <div className="flex items-center justify-between"><span className="text-gray-500">Dosen</span><span className="font-medium text-gray-700">{cls.lecturer}</span></div>
+                                <div className="flex items-center justify-between"><span className="text-gray-500">Jadwal</span><span>{cls.schedule.map(s => `${s.day} ${s.start}-${s.end}`).join(', ')}</span></div>
+                                <div className="flex items-center justify-between"><span className="text-gray-500">Akses Hari Ini</span><span>{cls.todayAccessCount}</span></div>
+                                <div className="flex items-center justify-between"><span className="text-gray-500">Last Access</span><span>{cls.lastAccess || '-'}</span></div>
+                            </div>
+                            <div className="mt-auto flex items-center justify-between pt-3 border-t border-gray-100">
+                                <button className="text-xs text-blue-600 hover:underline flex items-center"><MdInfo className="mr-1" /> Detail</button>
+                                <button disabled={!cls.active} className={`text-xs px-2 py-1 rounded ${cls.active ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}>Revoke Akses</button>
                             </div>
                         </div>
                     ))}
                 </div>
+                {filtered.length === 0 && (
+                    <div className="text-center py-10 bg-white rounded-xl border border-dashed border-gray-300">
+                        <p className="text-sm text-gray-500">Tidak ada kelas ditemukan.</p>
+                    </div>
+                )}
             </div>
 
-            {/* System Status */}
-            <div className="bg-white rounded-xl shadow-md p-6 mt-8" data-aos="fade-up" data-aos-delay="500">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Status Sistem Akses</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div className="bg-gray-50 rounded-lg p-4">
-                        <p className="text-sm text-gray-500 mb-1">Face Recognition</p>
-                        <div className="flex items-center mb-2">
-                            <div className="h-3 w-3 rounded-full bg-green-500 mr-2"></div>
-                            <span className="text-sm font-medium text-gray-800">Online</span>
-                        </div>
-                        <p className="text-xs text-gray-500">Last Restart: 3 days ago</p>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-lg p-4">
-                        <p className="text-sm text-gray-500 mb-1">Door Control System</p>
-                        <div className="flex items-center mb-2">
-                            <div className="h-3 w-3 rounded-full bg-green-500 mr-2"></div>
-                            <span className="text-sm font-medium text-gray-800">Online</span>
-                        </div>
-                        <p className="text-xs text-gray-500">All doors responding</p>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-lg p-4">
-                        <p className="text-sm text-gray-500 mb-1">Authentication Server</p>
-                        <div className="flex items-center mb-2">
-                            <div className="h-3 w-3 rounded-full bg-green-500 mr-2"></div>
-                            <span className="text-sm font-medium text-gray-800">Online</span>
-                        </div>
-                        <p className="text-xs text-gray-500">Load: 32%</p>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-lg p-4">
-                        <p className="text-sm text-gray-500 mb-1">Error Rate (24h)</p>
-                        <div className="flex items-center mb-2">
-                            <div className="h-3 w-3 rounded-full bg-yellow-500 mr-2"></div>
-                            <span className="text-sm font-medium text-gray-800">0.5%</span>
-                        </div>
-                        <p className="text-xs text-gray-500">3 errors in last 24 hours</p>
-                    </div>
-                </div>
-
-                <div className="mt-6 border-t border-gray-100 pt-6">
-                    <h4 className="text-sm font-medium text-gray-800 mb-3">Recent System Events</h4>
-                    <div className="space-y-3">
-                        {[
-                            { time: "15:45:22", event: "Door lock system restarted for Room 2.02", type: "warning" },
-                            { time: "14:32:15", event: "Face recognition service updated to v2.3.1", type: "info" },
-                            { time: "09:15:03", event: "Routine system check completed successfully", type: "success" }
-                        ].map((event, idx) => (
-                            <div key={idx} className={`text-sm p-2 rounded-lg ${event.type === "warning" ? "bg-yellow-50 text-yellow-700" :
-                                    event.type === "info" ? "bg-blue-50 text-blue-700" :
-                                        "bg-green-50 text-green-700"
-                                }`}>
-                                <span className="font-medium">{event.time}</span> - {event.event}
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            {/* Simple System Note */}
+            <div className="mt-10 text-xs text-gray-400" data-aos="fade-up">
+                Sistem akses pintu ini hanya mendukung 1 perangkat fisik. Semua kelas terjadwal menggunakan pintu yang sama.
             </div>
         </div>
     );

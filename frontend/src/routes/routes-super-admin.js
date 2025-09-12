@@ -2,30 +2,6 @@ import React from "react";
 // Admin Imports
 import Logout from "../views/auth/Logout";
 
-/**
- * OPTIMASI ROUTES SUPER ADMIN - VERSI ULTRA SIMPLIFIED
- * ====================================================
- * 
- * HALAMAN YANG DINONAKTIFKAN (dengan komentar):
- * 1. StudentManagement & LecturerManagement - REDUNDAN dengan UsersList (gunakan filter)
- * 2. AttendanceExport - DIGABUNG ke AttendanceHistory
- * 3. AccessLogs & AccessMonitoring - DIGABUNG ke RoomAccess dengan tab
- * 4. HardwareMonitoring - DIGABUNG ke SystemLogs
- * 5. ActivityLogs & SecurityAlerts - DIGABUNG ke SystemLogs dengan filter
- * 6. SystemLogs - DIHILANGKAN (terlalu teknis untuk admin basic)
- * 7. SystemSettings (semua sub-pages) - DIHILANGKAN (terlalu kompleks)
- * 8. ReportGenerator (semua sub-pages) - DIHILANGKAN (tidak diperlukan sistem basic)
- * 9. AnalyticsDashboard & sub-pages - DIHILANGKAN (tidak diperlukan sistem basic) * 10. SystemReset & BulkOperations - DIHAPUS/DIGABUNG (berbahaya/redundan)
- * 11. Help & sub-pages - DIHILANGKAN (tidak diperlukan admin berpengalaman)
- * 12. Import/Export Users - DIHILANGKAN (memperkompleks UI, tidak diperlukan sistem basic)
- * 
- * SISTEM SEKARANG FOKUS PADA CORE FUNCTIONALITY SAJA:
- * - Dashboard, User Management (basic), Face Dataset, Attendance, Room Access
- * - Notifications, Profile, Logout
- * 
- * TOTAL PENGURANGAN: 30 halaman → 7 halaman core (77% reduction)
- */
-// Icon Imports (cleaned up - removed unused icons)
 import {
   MdExitToApp,
   MdDashboard,
@@ -34,14 +10,12 @@ import {
   MdAccessTime,
   MdHistory,
   MdMeetingRoom,
-  MdNotifications,
   MdManageAccounts,
   MdPersonAdd,
   MdFileUpload,
   MdDataset,
   MdVerified,
   MdEdit,
-  MdLock,
   MdPersonPin
 } from "react-icons/md";
 
@@ -59,9 +33,9 @@ import AttendanceManagement from "../views/super-admin/attendance";
 import AttendanceHistory from "../views/super-admin/attendance/components/AttendanceHistory";
 import ManualVerification from "../views/super-admin/attendance/components/ManualVerification";
 import RoomAccess from "../views/super-admin/room-access";
-import DoorSettings from "../views/super-admin/room-access/components/DoorSettings";
-import NotificationCenter from "../views/super-admin/notifications/NotificationCenter";
 import AdminProfile from "../views/super-admin/profile/AdminProfile";
+import AddClass from "../views/super-admin/courses/AddClass";
+import ManageClassUsers from "../views/super-admin/courses/ManageClassUsers";
 
 const routes = [
   {
@@ -172,20 +146,29 @@ const routes = [
     component: <RoomAccess />,
   },
   {
-    name: "Konfigurasi Pintu",
+    name: "Manajemen Kelas",
     layout: "/admin",
-    parentPath: "room-access",
-    path: "door-settings",
-    icon: <MdLock className="h-6 w-6 ml-10" />,
-    component: <DoorSettings />,
+    path: "class-management",
+    icon: <MdPeople className="h-6 w-6" />,
+    component: <AddClass />, // default to add class page
+  },
+  {
+    name: "Tambah Kelas",
+    layout: "/admin",
+    parentPath: "class-management",
+    path: "add-class",
+    icon: <MdPersonAdd className="h-6 w-6 ml-10" />,
+    component: <AddClass />,
     secondary: true,
   },
   {
-    name: "Notifikasi Sistem",
+    name: "Atur User Kelas",
     layout: "/admin",
-    path: "notifications",
-    icon: <MdNotifications className="h-6 w-6" />,
-    component: <NotificationCenter />,
+    parentPath: "class-management",
+    path: "manage-class-users",
+    icon: <MdManageAccounts className="h-6 w-6 ml-10" />,
+    component: <ManageClassUsers />,
+    secondary: true,
   },
   {
     name: "Profil Admin",

@@ -33,14 +33,6 @@ export const login = async (req, res) => {
             });
         }
 
-        // Check if user is active
-        if (user.status !== 'active') {
-            return res.status(403).json({
-                success: false,
-                message: `Akun Anda dalam status ${user.status}. Hubungi administrator.`
-            });
-        }
-
         // Verify password
         const isValidPassword = await argon2.verify(user.password, password);
         if (!isValidPassword) {
@@ -50,13 +42,20 @@ export const login = async (req, res) => {
             });
         }
 
-        // Update last login
-        await user.update({ last_login: new Date() });
-
         // Create session
-        req.session.userId = user.id;
-        req.session.userRole = user.role;        // Prepare response data dengan role-specific data
-        const userData = user.getRoleSpecificData();
+        req.session.userId = user.user_id;
+        req.session.userRole = user.role;
+
+        // Prepare simplified response data
+        const userData = {
+            user_id: user.user_id,
+            fullname: user.fullname,
+            email: user.email,
+            role: user.role,
+            gender: user.gender,
+            student_id: user.student_id,
+            created_at: user.created_at
+        };
 
         res.status(200).json({
             success: true,
@@ -83,44 +82,27 @@ export const login = async (req, res) => {
 export const register = async (req, res) => {
     try {
         const {
-            user_id,
+            fullname,
             email,
             password,
-            full_name,
             role,
-            phone,
-            address,
-            birth_date,
             gender,
-            emergency_contact,
-            emergency_phone,
-            notes,
-            // Student specific
-            program_study,
-            semester,
-            academic_year,
-            entrance_year,
-            gpa,
-            guardian_name,
-            guardian_phone,
-            // Lecturer specific
-            department,
-            position,
-            specialization,
-            education_level,
-            office_room,
-            employee_id,
-            // Super Admin specific
-            admin_level,
-            permissions,
-            department_access
+            student_id
         } = req.body;
 
         // Validation
-        if (!user_id || !email || !password || !full_name || !role) {
+        if (!fullname || !email || !password || !role) {
             return res.status(400).json({
                 success: false,
-                message: "Data wajib harus diisi"
+                message: "Nama lengkap, email, password, dan role harus diisi"
+            });
+        }
+
+        // Validate role
+        if (!['super-admin', 'student'].includes(role)) {
+            return res.status(400).json({
+                success: false,
+                message: "Role harus 'super-admin' atau 'student'"
             });
         }
 
@@ -129,7 +111,7 @@ export const register = async (req, res) => {
             where: {
                 [db.Sequelize.Op.or]: [
                     { email },
-                    { user_id }
+                    ...(student_id ? [{ student_id }] : [])
                 ]
             }
         });
@@ -137,90 +119,42 @@ export const register = async (req, res) => {
         if (existingUser) {
             return res.status(409).json({
                 success: false,
-                message: "Email atau User ID sudah terdaftar"
+                message: "Email atau Student ID sudah terdaftar"
             });
         }
 
         // Hash password
         const hashedPassword = await argon2.hash(password);
 
-        // Prepare user data dengan field role-specific
+        // Prepare simplified user data
         const userData = {
-            user_id,
+            fullname,
             email,
             password: hashedPassword,
-            full_name,
             role,
-            phone,
-            address,
-            birth_date,
-            gender,
-            emergency_contact,
-            emergency_phone,
-            notes,
-            status: 'active'
+            gender: gender || null,
+            student_id: student_id || null
         };
 
-        // Add role-specific fields
-        if (role === 'student') {
-            // Validasi field student yang required
-            if (!program_study || !semester || !entrance_year) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Data mahasiswa tidak lengkap (program_study, semester, entrance_year)"
-                });
-            }
-
-            userData.program_study = program_study;
-            userData.semester = semester;
-            userData.academic_year = academic_year || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
-            userData.entrance_year = entrance_year;
-            userData.gpa = gpa;
-            userData.guardian_name = guardian_name;
-            userData.guardian_phone = guardian_phone;
-        }
-        else if (role === 'lecturer') {
-            // Validasi field lecturer yang required
-            if (!department || !position || !employee_id) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Data dosen tidak lengkap (department, position, employee_id)"
-                });
-            }
-
-            userData.department = department;
-            userData.position = position;
-            userData.specialization = specialization;
-            userData.education_level = education_level;
-            userData.office_room = office_room;
-            userData.employee_id = employee_id;
-        }
-        else if (role === 'super-admin') {
-            // Validasi field admin yang required
-            if (!admin_level) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Level admin harus ditentukan"
-                });
-            }
-
-            userData.admin_level = admin_level;
-            userData.permissions = permissions || [];
-            userData.department_access = department_access || [];
-            userData.department = department;
-        }
-
-        // Create user dengan semua data termasuk role-specific
+        // Create user with simplified data
         const newUser = await Users.create(userData);
 
-        // Get user data dengan role-specific formatting
-        const completeUserData = newUser.getRoleSpecificData();
+        // Return user data without password
+        const userResponse = {
+            user_id: newUser.user_id,
+            fullname: newUser.fullname,
+            email: newUser.email,
+            role: newUser.role,
+            gender: newUser.gender,
+            student_id: newUser.student_id,
+            created_at: newUser.created_at
+        };
 
         res.status(201).json({
             success: true,
             message: "Registrasi berhasil",
             data: {
-                user: completeUserData
+                user: userResponse
             }
         });
 
@@ -255,8 +189,17 @@ export const getProfile = async (req, res) => {
             });
         }
 
-        // Get user data dengan role-specific formatting
-        const userData = user.getRoleSpecificData();
+        // Return simplified user data without password
+        const userData = {
+            user_id: user.user_id,
+            fullname: user.fullname,
+            email: user.email,
+            role: user.role,
+            gender: user.gender,
+            student_id: user.student_id,
+            created_at: user.created_at,
+            updated_at: user.updated_at
+        };
 
         res.status(200).json({
             success: true,

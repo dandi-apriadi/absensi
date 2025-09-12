@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import fileUpload from "express-fileupload";
 import SequelizeStore from "connect-session-sequelize";
 import helmet from "helmet";
-import db from "./config/Database.js";
+import db, { ensureDatabaseConnection } from "./config/Database.js";
 import AllRoutes from "./routes/routes-backend.js";
 dotenv.config();
 
@@ -15,7 +15,8 @@ const app = express();
 app.use(
     cors({
         credentials: true,
-        origin: process.env.CLIENT_ORIGIN || "http://localhost:3001",
+        // Use CLIENT_ORIGIN (preferred) then CORS_ORIGIN fallback; final fallback only for local dev
+        origin: process.env.CLIENT_ORIGIN || process.env.CORS_ORIGIN || "http://localhost:3001",
     })
 );
 
@@ -62,8 +63,12 @@ app.use(
 // Database initialization
 const initDatabase = async () => {
     try {
-        await db.authenticate();
-        console.log('✅ Database connection established.');
+        const ok = await ensureDatabaseConnection();
+        if (!ok) {
+            console.error('❌ Unable to establish database connection after retries.');
+            return false;
+        }
+        console.log('✅ Database connection established (post-retry check).');
 
         // Import all models to ensure they are registered
         console.log('📋 Loading models...');
@@ -98,7 +103,8 @@ const initDatabase = async () => {
     }
 };
 
-const PORT = process.env.PORT || 5001;
+// Prefer APP_PORT then PORT then default 5001
+const PORT = process.env.APP_PORT || process.env.PORT || 5001;
 
 // Wrap server initialization in IIFE
 (async () => {
