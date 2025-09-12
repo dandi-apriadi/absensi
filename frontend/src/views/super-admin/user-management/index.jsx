@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
     MdPeople,
     MdAdd,
@@ -18,114 +18,76 @@ import {
 } from "react-icons/md";
 import AOS from 'aos';
 import 'aos/dist/aos.css';
+import {
+    fetchUsers,
+    createUser as apiCreateUser,
+    updateUser as apiUpdateUser,
+    deleteUser as apiDeleteUser,
+    updateUserStatus as apiUpdateUserStatus,
+    fetchDashboard
+} from '../../../services/userManagementService';
+import Swal from 'sweetalert2';
+import 'sweetalert2/dist/sweetalert2.min.css';
 
 const UserManagement = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [filterRole, setFilterRole] = useState("all");
     const [filterStatus, setFilterStatus] = useState("all");
     const [currentPage, setCurrentPage] = useState(1);
+    const [usersPerPage, setUsersPerPage] = useState(6);
     const [showDropdown, setShowDropdown] = useState(null);
-    const usersPerPage = 6;
+    const [users, setUsers] = useState([]);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [creating, setCreating] = useState(false);
+    const [newUser, setNewUser] = useState({ full_name: '', email: '', role: 'student', status: 'active' });
+    const [statsData, setStatsData] = useState({ loading: true, error: null, overview: null });
 
-    // Dummy data untuk pengguna
-    const dummyUsers = [
-        {
-            id: 1,
-            name: "Dr. Ahmad Sudrajat",
-            email: "ahmad.sudrajat@univ.ac.id",
-            phone: "+62 812-3456-7890",
-            role: "dosen",
-            status: "active",
-            joinDate: "2021-03-15",
-            avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-            department: "Teknik Informatika",
-            lastLogin: "2 jam yang lalu"
-        },
-        {
-            id: 2,
-            name: "Sarah Wijaya",
-            email: "sarah.wijaya@student.univ.ac.id",
-            phone: "+62 813-9876-5432",
-            role: "mahasiswa",
-            status: "active",
-            joinDate: "2023-08-20",
-            avatar: "https://images.unsplash.com/photo-1494790108755-2616b2e66de4?w=150&h=150&fit=crop&crop=face",
-            department: "Sistem Informasi",
-            lastLogin: "1 hari yang lalu"
-        },
-        {
-            id: 3,
-            name: "Prof. Dr. Budi Santoso",
-            email: "budi.santoso@univ.ac.id",
-            phone: "+62 814-1234-5678",
-            role: "dosen",
-            status: "active",
-            joinDate: "2019-01-10",
-            avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face",
-            department: "Teknik Informatika",
-            lastLogin: "3 jam yang lalu"
-        },
-        {
-            id: 4,
-            name: "Rina Melati",
-            email: "rina.melati@student.univ.ac.id",
-            phone: "+62 815-2468-1357",
-            role: "mahasiswa",
-            status: "inactive",
-            joinDate: "2022-09-05",
-            avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face",
-            department: "Manajemen Informatika",
-            lastLogin: "1 minggu yang lalu"
-        },
-        {
-            id: 5,
-            name: "Muhammad Rizki",
-            email: "m.rizki@student.univ.ac.id",
-            phone: "+62 816-3691-2580",
-            role: "mahasiswa",
-            status: "active",
-            joinDate: "2023-01-15",
-            avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face",
-            department: "Teknik Informatika",
-            lastLogin: "5 jam yang lalu"
-        },
-        {
-            id: 6,
-            name: "Dr. Siti Nurhaliza",
-            email: "siti.nurhaliza@univ.ac.id",
-            phone: "+62 817-4815-1623",
-            role: "dosen",
-            status: "active",
-            joinDate: "2020-06-12",
-            avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face",
-            department: "Sistem Informasi",
-            lastLogin: "1 jam yang lalu"
-        },
-        {
-            id: 7,
-            name: "Dimas Prasetyo",
-            email: "dimas.prasetyo@student.univ.ac.id",
-            phone: "+62 818-7410-9632",
-            role: "mahasiswa",
-            status: "active",
-            joinDate: "2023-07-22",
-            avatar: "https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?w=150&h=150&fit=crop&crop=face",
-            department: "Manajemen Informatika",
-            lastLogin: "4 jam yang lalu"
-        },
-        {
-            id: 8,
-            name: "Indira Putri",
-            email: "indira.putri@student.univ.ac.id",
-            phone: "+62 819-8527-4163",
-            role: "mahasiswa",
-            status: "inactive",
-            joinDate: "2022-02-28",
-            avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face",
-            department: "Teknik Informatika",
-            lastLogin: "2 minggu yang lalu"
+    const loadUsers = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const apiRole = filterRole === 'dosen' ? 'lecturer' : (filterRole === 'mahasiswa' ? 'student' : (filterRole === 'all' ? '' : filterRole));
+            const data = await fetchUsers({
+                page: currentPage,
+                limit: usersPerPage,
+                search: searchTerm,
+                role: apiRole,
+                status: filterStatus
+            });
+            // backend returns users with fields role maybe in english (lecturer/student) adjust mapping
+            const mapped = (data.users || []).map(u => ({
+                id: u.id,
+                name: u.full_name,
+                email: u.email,
+                phone: u.phone || '-',
+                role: u.role === 'lecturer' ? 'dosen' : (u.role === 'student' ? 'mahasiswa' : u.role),
+                status: u.status,
+                department: u.department || u.program_study || '-',
+                avatar: u.profile_picture || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(u.full_name),
+                lastLogin: u.last_login || '-'
+            }));
+            setUsers(mapped);
+            if (data.pagination) {
+                setTotalPages(data.pagination.totalPages || 1);
+                setTotalItems(data.pagination.totalItems || mapped.length);
+                // sinkronkan current page jika backend mengembalikan berbeda
+                if (data.pagination.currentPage && data.pagination.currentPage !== currentPage) {
+                    setCurrentPage(data.pagination.currentPage);
+                }
+            } else {
+                setTotalPages(1);
+                setTotalItems(mapped.length);
+            }
+        } catch (e) {
+            console.error(e);
+            setError('Gagal memuat data pengguna');
+        } finally {
+            setLoading(false);
         }
-    ];
+    }, [currentPage, usersPerPage, searchTerm, filterRole, filterStatus]);
 
     useEffect(() => {
         AOS.init({
@@ -136,21 +98,10 @@ const UserManagement = () => {
         });
     }, []);
 
-    // Filter users
-    const filteredUsers = dummyUsers.filter(user => {
-        const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesRole = filterRole === "all" || user.role === filterRole;
-        const matchesStatus = filterStatus === "all" || user.status === filterStatus;
+    useEffect(() => { loadUsers(); }, [loadUsers]);
 
-        return matchesSearch && matchesRole && matchesStatus;
-    });
-
-    // Pagination
-    const indexOfLastUser = currentPage * usersPerPage;
-    const indexOfFirstUser = indexOfLastUser - usersPerPage;
-    const currentUsers = filteredUsers.slice(indexOfFirstUser, indexOfLastUser);
-    const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+    const filteredUsers = users; // sudah difilter dari backend
+    const currentUsers = users; // backend sudah memberi data halaman saat ini
 
     const handleDropdownToggle = (userId) => {
         setShowDropdown(showDropdown === userId ? null : userId);
@@ -164,36 +115,80 @@ const UserManagement = () => {
         return status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
     };
 
-    const stats = [
-        {
-            title: "Total Pengguna",
-            value: dummyUsers.length,
-            change: "+12%",
-            icon: MdPeople,
-            color: "bg-gradient-to-r from-blue-500 to-blue-600"
-        },
-        {
-            title: "Dosen",
-            value: dummyUsers.filter(u => u.role === 'dosen').length,
-            change: "+5%",
-            icon: MdSchool,
-            color: "bg-gradient-to-r from-purple-500 to-purple-600"
-        },
-        {
-            title: "Mahasiswa",
-            value: dummyUsers.filter(u => u.role === 'mahasiswa').length,
-            change: "+18%",
-            icon: MdPersonOutline,
-            color: "bg-gradient-to-r from-green-500 to-green-600"
-        },
-        {
-            title: "Pengguna Aktif",
-            value: dummyUsers.filter(u => u.status === 'active').length,
-            change: "+8%",
-            icon: MdCheckCircle,
-            color: "bg-gradient-to-r from-emerald-500 to-emerald-600"
+    const stats = (() => {
+        const o = statsData.overview;
+        return [
+            { key: 'totalUsers', title: 'Total Pengguna', value: o?.totalUsers ?? '-', change: '', icon: MdPeople, color: 'bg-gradient-to-r from-blue-500 to-blue-600' },
+            { key: 'totalStudents', title: 'Mahasiswa', value: o?.totalStudents ?? '-', change: '', icon: MdPersonOutline, color: 'bg-gradient-to-r from-green-500 to-green-600' },
+            { key: 'activeUsers', title: 'Pengguna Aktif', value: o?.activeUsers ?? '-', change: '', icon: MdCheckCircle, color: 'bg-gradient-to-r from-emerald-500 to-emerald-600' }
+        ];
+    })();
+
+    // Fetch dashboard stats sekali saat mount
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                setStatsData(s => ({ ...s, loading: true, error: null }));
+                const data = await fetchDashboard();
+                if (mounted) setStatsData({ loading: false, error: null, overview: data.overview });
+            } catch (e) {
+                if (mounted) setStatsData({ loading: false, error: e.response?.data?.message || 'Gagal memuat statistik', overview: null });
+            }
+        })();
+        return () => { mounted = false; };
+    }, []);
+
+    const handleCreate = async () => {
+        setCreating(true);
+        try {
+            const payload = {
+                user_id: newUser.user_id || 'USR' + Date.now(),
+                email: newUser.email,
+                password: newUser.password || 'Password123!',
+                full_name: newUser.full_name,
+                role: newUser.role === 'mahasiswa' ? 'student' : (newUser.role === 'dosen' ? 'lecturer' : newUser.role),
+                status: newUser.status
+            };
+            await apiCreateUser(payload);
+            await loadUsers();
+            setNewUser({ full_name: '', email: '', role: 'student', status: 'active' });
+            Swal.fire('Sukses', 'User berhasil dibuat', 'success');
+        } catch (e) {
+            Swal.fire('Error', e.response?.data?.message || 'Gagal membuat user', 'error');
+        } finally {
+            setCreating(false);
         }
-    ];
+    };
+
+    const handleDelete = async (id) => {
+        const confirm = await Swal.fire({
+            title: 'Hapus User?',
+            text: 'Tindakan ini tidak dapat dibatalkan',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Ya, hapus',
+            cancelButtonText: 'Batal'
+        });
+        if (!confirm.isConfirmed) return;
+        try {
+            await apiDeleteUser(id);
+            await loadUsers();
+            Swal.fire('Dihapus', 'User berhasil dihapus', 'success');
+        } catch (e) {
+            Swal.fire('Error', e.response?.data?.message || 'Gagal menghapus user', 'error');
+        }
+    };
+
+    const handleStatusToggle = async (user) => {
+        const newStatus = user.status === 'active' ? 'inactive' : 'active';
+        try {
+            await apiUpdateUserStatus(user.id, newStatus);
+            await loadUsers();
+        } catch (e) {
+            Swal.fire('Error', 'Gagal mengubah status', 'error');
+        }
+    };
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-100 p-4 md:p-8">
@@ -206,15 +201,36 @@ const UserManagement = () => {
                         </h1>
                         <p className="text-gray-600 text-lg">Kelola semua pengguna sistem termasuk mahasiswa dan dosen</p>
                     </div>
-                    <button className="mt-4 lg:mt-0 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
+                    <div className="flex flex-col md:flex-row gap-3 md:items-end">
+                        <div className="flex flex-col">
+                            <input value={newUser.full_name} onChange={e=>setNewUser(n=>({...n, full_name:e.target.value}))} placeholder="Nama Lengkap" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                        <div className="flex flex-col">
+                            <input value={newUser.email} onChange={e=>setNewUser(n=>({...n, email:e.target.value}))} placeholder="Email" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                        <div className="flex flex-col">
+                            <select value={newUser.role} onChange={e=>setNewUser(n=>({...n, role:e.target.value}))} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                                <option value="student">Mahasiswa</option>
+                                <option value="lecturer">Dosen</option>
+                                <option value="super-admin">Super Admin</option>
+                            </select>
+                        </div>
+                        <div className="flex flex-col">
+                            <select value={newUser.status} onChange={e=>setNewUser(n=>({...n, status:e.target.value}))} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                                <option value="active">Aktif</option>
+                                <option value="inactive">Tidak Aktif</option>
+                            </select>
+                        </div>
+                    <button onClick={handleCreate} disabled={creating} className="mt-4 lg:mt-0 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
                         <MdAdd className="w-5 h-5" />
-                        Tambah Pengguna
+                        {creating ? 'Menyimpan...' : 'Tambah Pengguna'}
                     </button>
+                    </div>
                 </div>
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                 {stats.map((stat, index) => (
                     <div
                         key={index}
@@ -224,9 +240,13 @@ const UserManagement = () => {
                     >
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-gray-600 text-sm font-medium mb-1">{stat.title}</p>
-                                <h3 className="text-3xl font-bold text-gray-800">{stat.value}</h3>
-                                <p className="text-green-600 text-sm font-medium mt-1">{stat.change} dari bulan lalu</p>
+                                                <p className="text-gray-600 text-sm font-medium mb-1">{stat.title}</p>
+                                                <h3 className="text-3xl font-bold text-gray-800">
+                                                    {statsData.loading ? '...' : stat.value}
+                                                </h3>
+                                                <p className="text-green-600 text-xs font-medium mt-1">
+                                                    {statsData.error ? <span className="text-red-500">{statsData.error}</span> : (stat.change || ' ')}
+                                                </p>
                             </div>
                             <div className={`${stat.color} p-3 rounded-xl text-white`}>
                                 <stat.icon className="w-8 h-8" />
@@ -271,119 +291,124 @@ const UserManagement = () => {
             </div>
 
             {/* Users Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                {currentUsers.map((user, index) => (
-                    <div
-                        key={user.id}
-                        className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100"
-                        data-aos="fade-up"
-                        data-aos-delay={index * 100}
-                    >
-                        <div className="p-6">
-                            <div className="flex items-start justify-between mb-4">
-                                <div className="flex items-center space-x-4">
-                                    <img
-                                        src={user.avatar}
-                                        alt={user.name}
-                                        className="w-16 h-16 rounded-full object-cover border-4 border-gray-100"
-                                    />
-                                    <div>
-                                        <h3 className="font-bold text-gray-800 text-lg">{user.name}</h3>
-                                        <p className="text-gray-600 text-sm">{user.department}</p>
-                                    </div>
-                                </div>
-                                <div className="relative">
-                                    <button
-                                        onClick={() => handleDropdownToggle(user.id)}
-                                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors duration-200"
-                                    >
-                                        <MdMoreVert className="w-5 h-5 text-gray-600" />
-                                    </button>
-                                    {showDropdown === user.id && (
-                                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 z-10">
-                                            <button className="flex items-center gap-3 w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-200">
-                                                <MdVisibility className="w-4 h-4 text-blue-600" />
-                                                <span className="text-sm text-gray-700">Lihat Detail</span>
-                                            </button>
-                                            <button className="flex items-center gap-3 w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-200">
-                                                <MdEdit className="w-4 h-4 text-green-600" />
-                                                <span className="text-sm text-gray-700">Edit</span>
-                                            </button>
-                                            <button className="flex items-center gap-3 w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-200 rounded-b-xl">
-                                                <MdDelete className="w-4 h-4 text-red-600" />
-                                                <span className="text-sm text-gray-700">Hapus</span>
-                                            </button>
+            {error && <div className="text-red-600 mb-4">{error}</div>}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8" data-aos="fade-up">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                            <tr>
+                                <th className="px-4 py-3 text-left">#</th>
+                                <th className="px-4 py-3 text-left">Pengguna</th>
+                                <th className="px-4 py-3 text-left">Email</th>
+                                <th className="px-4 py-3 text-left">Telepon</th>
+                                <th className="px-4 py-3 text-left">Role</th>
+                                <th className="px-4 py-3 text-left">Status</th>
+                                <th className="px-4 py-3 text-left">Dept/Prodi</th>
+                                <th className="px-4 py-3 text-left">Login Terakhir</th>
+                                <th className="px-4 py-3 text-left">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {loading && (
+                                <tr><td colSpan={9} className="px-4 py-6 text-center text-gray-500">Memuat data...</td></tr>
+                            )}
+                            {!loading && currentUsers.length === 0 && (
+                                <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-500">Tidak ada data pengguna</td></tr>
+                            )}
+                            {!loading && currentUsers.map((user, idx) => (
+                                <tr key={user.id} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 align-top">{(currentPage - 1) * usersPerPage + idx + 1}</td>
+                                    <td className="px-4 py-3 align-top">
+                                        <div className="flex items-center gap-3">
+                                            <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover border" />
+                                            <div>
+                                                <div className="font-medium text-gray-800">{user.name}</div>
+                                                <div className="text-xs text-gray-500">{user.user_id || '-'}</div>
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="space-y-3 mb-6">
-                                <div className="flex items-center gap-3">
-                                    <MdEmail className="w-4 h-4 text-gray-500" />
-                                    <span className="text-sm text-gray-600">{user.email}</span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <MdPhone className="w-4 h-4 text-gray-500" />
-                                    <span className="text-sm text-gray-600">{user.phone}</span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <MdDateRange className="w-4 h-4 text-gray-500" />
-                                    <span className="text-sm text-gray-600">Login terakhir: {user.lastLogin}</span>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center justify-between">
-                                <div className="flex gap-2">
-                                    <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${getRoleColor(user.role)}`}>
-                                        {user.role}
-                                    </span>
-                                    <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${getStatusColor(user.status)}`}>
-                                        {user.status === 'active' ? 'Aktif' : 'Tidak Aktif'}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                ))}
+                                    </td>
+                                    <td className="px-4 py-3 align-top text-gray-700">{user.email}</td>
+                                    <td className="px-4 py-3 align-top text-gray-700">{user.phone}</td>
+                                    <td className="px-4 py-3 align-top">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getRoleColor(user.role)}`}>{user.role}</span>
+                                    </td>
+                                    <td className="px-4 py-3 align-top">
+                                        <button onClick={() => handleStatusToggle(user)} className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getStatusColor(user.status)} hover:opacity-80`}>
+                                            {user.status === 'active' ? 'Aktif' : 'Tidak Aktif'}
+                                        </button>
+                                    </td>
+                                    <td className="px-4 py-3 align-top text-gray-700">{user.department}</td>
+                                    <td className="px-4 py-3 align-top text-gray-600 text-xs">{user.lastLogin}</td>
+                                    <td className="px-4 py-3 align-top">
+                                        <div className="relative">
+                                            <button onClick={() => handleDropdownToggle(user.id)} className="p-2 hover:bg-gray-100 rounded-lg">
+                                                <MdMoreVert className="w-4 h-4 text-gray-600" />
+                                            </button>
+                                            {showDropdown === user.id && (
+                                                <div className="absolute z-20 right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg">
+                                                    <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 hover:bg-gray-50 text-xs">
+                                                        <MdVisibility className="w-4 h-4 text-blue-600" /> Detail
+                                                    </button>
+                                                    <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 hover:bg-gray-50 text-xs">
+                                                        <MdEdit className="w-4 h-4 text-green-600" /> Edit
+                                                    </button>
+                                                    <button onClick={() => handleDelete(user.id)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 hover:bg-gray-50 text-xs rounded-b-lg">
+                                                        <MdDelete className="w-4 h-4 text-red-600" /> Hapus
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             {/* Pagination */}
-            {totalPages > 1 && (
-                <div className="flex justify-center items-center space-x-2 mb-8" data-aos="fade-up">
-                    <button
-                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                        disabled={currentPage === 1}
-                        className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
-                    >
-                        Previous
-                    </button>
-
-                    {[...Array(totalPages)].map((_, i) => (
-                        <button
-                            key={i + 1}
-                            onClick={() => setCurrentPage(i + 1)}
-                            className={`px-4 py-2 rounded-lg transition-colors duration-200 ${currentPage === i + 1
-                                    ? 'bg-blue-600 text-white'
-                                    : 'border border-gray-300 hover:bg-gray-50'
-                                }`}
-                        >
-                            {i + 1}
-                        </button>
-                    ))}
-
-                    <button
-                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                        disabled={currentPage === totalPages}
-                        className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
-                    >
-                        Next
-                    </button>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8" data-aos="fade-up">
+                <div className="text-sm text-gray-600">
+                    {totalItems > 0 && (
+                        <>Menampilkan {(currentPage - 1) * usersPerPage + 1} - {Math.min(currentPage * usersPerPage, totalItems)} dari {totalItems} pengguna</>
+                    )}
                 </div>
-            )}
+                <div className="flex items-center gap-4">
+                    <select
+                        value={usersPerPage}
+                        onChange={(e) => { setUsersPerPage(parseInt(e.target.value)); setCurrentPage(1); }}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    >
+                        {[6, 10, 20, 50].map(size => <option key={size} value={size}>{size} / page</option>)}
+                    </select>
+                    {totalPages > 1 && (
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                                disabled={currentPage === 1}
+                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm disabled:opacity-50 hover:bg-gray-50"
+                            >Prev</button>
+                            <div className="flex gap-1">
+                                {Array.from({ length: totalPages }, (_, i) => i + 1).slice(
+                                    Math.max(0, Math.min(totalPages - 5, currentPage - 3)),
+                                    Math.max(0, Math.min(totalPages - 5, currentPage - 3)) + Math.min(5, totalPages)
+                                ).map(p => (
+                                    <button key={p} onClick={() => setCurrentPage(p)}
+                                        className={`px-3 py-2 rounded-lg text-sm ${p === currentPage ? 'bg-blue-600 text-white' : 'border border-gray-300 hover:bg-gray-50'}`}>{p}</button>
+                                ))}
+                            </div>
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                                disabled={currentPage === totalPages}
+                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm disabled:opacity-50 hover:bg-gray-50"
+                            >Next</button>
+                        </div>
+                    )}
+                </div>
+            </div>
 
             {/* Empty State */}
-            {filteredUsers.length === 0 && (
+            {(!loading && filteredUsers.length === 0) && (
                 <div className="bg-white rounded-2xl shadow-lg p-12 text-center" data-aos="fade-up">
                     <MdPeople className="h-20 w-20 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-xl font-semibold text-gray-600 mb-2">Tidak ada data pengguna</h3>

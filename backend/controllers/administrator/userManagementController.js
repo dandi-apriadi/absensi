@@ -20,26 +20,15 @@ export const getDashboard = async (req, res) => {
                 success: false,
                 message: "Akses ditolak. Hanya super admin yang diizinkan."
             });
-        }        // Get user statistics
+        }
+        // Statistik sesuai struktur tabel saat ini (role: super-admin | student, tidak ada kolom status)
         const totalUsers = await Users.count();
         const totalStudents = await Users.count({ where: { role: 'student' } });
-        const totalLecturers = await Users.count({ where: { role: 'lecturer' } });
         const totalSuperAdmins = await Users.count({ where: { role: 'super-admin' } });
-
-        // Get active users
-        const activeUsers = await Users.count({
-            where: { status: 'active' }
-        });
-
-        // Get inactive users
-        const inactiveUsers = await Users.count({
-            where: { status: 'inactive' }
-        });
-
-        // Get suspended users
-        const suspendedUsers = await Users.count({
-            where: { status: 'suspended' }
-        });
+        const totalLecturers = 0; // tidak ada role 'lecturer' di enum model saat ini
+        const activeUsers = null; // kolom status tidak tersedia
+        const inactiveUsers = null;
+        const suspendedUsers = null;
 
         // Get recent registrations (last 30 days)
         const thirtyDaysAgo = new Date();
@@ -54,13 +43,17 @@ export const getDashboard = async (req, res) => {
         });
 
         // Get users by role breakdown
-        const usersByRole = await Users.findAll({
+        const usersByRoleRaw = await Users.findAll({
             attributes: [
                 'role',
                 [db.Sequelize.fn('COUNT', db.Sequelize.col('role')), 'count']
             ],
             group: ['role']
         });
+        const usersByRole = usersByRoleRaw.map(item => ({
+            role: item.role,
+            count: parseInt(item.dataValues.count)
+        }));
 
         res.status(200).json({
             success: true,
@@ -75,10 +68,7 @@ export const getDashboard = async (req, res) => {
                     suspendedUsers,
                     recentRegistrations
                 },
-                usersByRole: usersByRole.map(item => ({
-                    role: item.role,
-                    count: parseInt(item.dataValues.count)
-                }))
+                usersByRole
             }
         });
 
@@ -143,8 +133,27 @@ export const getAllUsers = async (req, res) => {
             offset: offset
         });
 
-        // Format users with role-specific data
-        const formattedUsers = users.map(user => user.getRoleSpecificData());
+        // Format users with role-specific data (fallback jika method tidak tersedia)
+        const formattedUsers = users.map(user => {
+            if (typeof user.getRoleSpecificData === 'function') {
+                return user.getRoleSpecificData();
+            }
+            const base = user.toJSON();
+            return {
+                id: base.id,
+                user_id: base.user_id,
+                email: base.email,
+                full_name: base.full_name,
+                role: base.role,
+                status: base.status,
+                phone: base.phone,
+                address: base.address,
+                profile_picture: base.profile_picture,
+                last_login: base.last_login,
+                created_at: base.created_at,
+                updated_at: base.updated_at
+            };
+        });
 
         // Calculate pagination info
         const totalPages = Math.ceil(count / parseInt(limit));
