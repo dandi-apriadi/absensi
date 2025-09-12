@@ -15,7 +15,6 @@ import {
   MdFileUpload,
   MdDataset,
   MdVerified,
-  MdEdit,
   MdPersonPin
 } from "react-icons/md";
 
@@ -23,7 +22,6 @@ import {
 import SuperAdminDashboard from "../views/super-admin/dashboard";
 import UserManagement from "../views/super-admin/user-management";
 import AddUser from "../views/super-admin/user-management/components/AddUser";
-import EditUser from "../views/super-admin/user-management/components/EditUser";
 import UsersList from "../views/super-admin/user-management/components/UsersList";
 import FaceDatasetManagement from "../views/super-admin/face-dataset";
 import UploadDataset from "../views/super-admin/face-dataset/components/UploadDataset";
@@ -59,15 +57,6 @@ const routes = [
     path: "add-user",
     icon: <MdPersonAdd className="h-6 w-6 ml-10" />,
     component: <AddUser />,
-    secondary: true,
-  },
-  {
-    name: "Edit Pengguna",
-    layout: "/admin",
-    parentPath: "user-management",
-    path: "edit-user",
-    icon: <MdEdit className="h-6 w-6 ml-10" />,
-    component: <EditUser />,
     secondary: true,
   },
   {

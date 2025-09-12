@@ -3,62 +3,36 @@ import {
     MdPersonAdd,
     MdSave,
     MdCancel,
-    MdUpload,
     MdVisibility,
     MdVisibilityOff,
     MdPerson,
-    MdEmail,
-    MdPhone,
-    MdSchool,
-    MdWork,
-    MdLocationOn,
-    MdDateRange,
     MdSecurity,
-    MdImage,
     MdCheckCircle,
     MdError,
     MdInfo
 } from "react-icons/md";
 import AOS from 'aos';
 import 'aos/dist/aos.css';
+import { createUser } from "../../../../services/userManagementService";
 
 const AddUser = () => {
     const [currentStep, setCurrentStep] = useState(1);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const [profileImage, setProfileImage] = useState(null);
-    const [imagePreview, setImagePreview] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [submitSuccess, setSubmitSuccess] = useState(false);
 
     const [formData, setFormData] = useState({
-        // Personal Information
-        fullName: "",
+        // Personal Information (sesuai model database)
+        fullname: "",
         email: "",
-        phone: "",
-        birthDate: "",
         gender: "",
-        address: "",
-
-        // Academic Information
-        userType: "",
-        nim: "",
-        nidn: "",
-        department: "",
-        studyProgram: "",
-        year: "",
-        position: "",
-        education: "",
-        specialization: "",
+        role: "",
+        student_id: "",
 
         // Account Information
-        username: "",
         password: "",
-        confirmPassword: "",
-        status: "active",
-
-        // Additional Information
-        emergencyContact: "",
-        emergencyPhone: "",
-        notes: ""
+        confirmPassword: ""
     });
 
     const [errors, setErrors] = useState({});
@@ -88,42 +62,19 @@ const AddUser = () => {
         }
     };
 
-    const handleImageUpload = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            setProfileImage(file);
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setImagePreview(reader.result);
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
     const validateStep = (step) => {
         const newErrors = {};
 
         switch (step) {
             case 1:
-                if (!formData.fullName) newErrors.fullName = "Nama lengkap wajib diisi";
+                if (!formData.fullname) newErrors.fullname = "Nama lengkap wajib diisi";
                 if (!formData.email) newErrors.email = "Email wajib diisi";
-                if (!formData.phone) newErrors.phone = "Nomor telepon wajib diisi";
-                if (!formData.userType) newErrors.userType = "Tipe pengguna wajib dipilih";
+                if (!formData.role) newErrors.role = "Role pengguna wajib dipilih";
+                if (formData.role === "student" && !formData.student_id) {
+                    newErrors.student_id = "Student ID wajib diisi untuk mahasiswa";
+                }
                 break;
             case 2:
-                if (formData.userType === "mahasiswa") {
-                    if (!formData.nim) newErrors.nim = "NIM wajib diisi";
-                    if (!formData.studyProgram) newErrors.studyProgram = "Program studi wajib dipilih";
-                    if (!formData.year) newErrors.year = "Angkatan wajib dipilih";
-                } else if (formData.userType === "dosen") {
-                    if (!formData.nidn) newErrors.nidn = "NIDN wajib diisi";
-                    if (!formData.position) newErrors.position = "Jabatan wajib dipilih";
-                    if (!formData.education) newErrors.education = "Pendidikan wajib diisi";
-                }
-                if (!formData.department) newErrors.department = "Jurusan wajib dipilih";
-                break;
-            case 3:
-                if (!formData.username) newErrors.username = "Username wajib diisi";
                 if (!formData.password) newErrors.password = "Password wajib diisi";
                 if (formData.password !== formData.confirmPassword) {
                     newErrors.confirmPassword = "Konfirmasi password tidak sesuai";
@@ -136,7 +87,7 @@ const AddUser = () => {
     };
 
     const nextStep = () => {
-        if (validateStep(currentStep) && currentStep < 4) {
+        if (validateStep(currentStep) && currentStep < 3) {
             setCurrentStep(currentStep + 1);
         }
     };
@@ -147,47 +98,67 @@ const AddUser = () => {
         }
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        if (validateStep(3)) {
-            console.log('Form Data:', formData);
-            console.log('Profile Image:', profileImage);
-            alert('Pengguna berhasil ditambahkan!');
-            // Reset form or redirect
+        if (!validateStep(2)) return;
+
+        setIsLoading(true);
+        try {
+            // Prepare data sesuai dengan model database
+            const userData = {
+                fullname: formData.fullname,
+                email: formData.email,
+                password: formData.password,
+                role: formData.role,
+                gender: formData.gender || null,
+                student_id: formData.role === 'student' ? formData.student_id : null
+            };
+
+            console.log('Sending user data:', userData);
+            
+            const response = await createUser(userData);
+            console.log('User created successfully:', response);
+            
+            setSubmitSuccess(true);
+            
+            // Reset form after success
+            setTimeout(() => {
+                setFormData({
+                    fullname: "",
+                    email: "",
+                    gender: "",
+                    role: "",
+                    student_id: "",
+                    password: "",
+                    confirmPassword: ""
+                });
+                setCurrentStep(1);
+                setSubmitSuccess(false);
+            }, 2000);
+
+        } catch (error) {
+            console.error('Error creating user:', error);
+            
+            let errorMessage = 'Terjadi kesalahan saat menyimpan data pengguna';
+            
+            if (error.response?.data?.message) {
+                errorMessage = error.response.data.message;
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            setErrors({ 
+                general: errorMessage 
+            });
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const steps = [
-        { number: 1, title: "Informasi Pribadi", icon: MdPerson },
-        { number: 2, title: "Informasi Akademik", icon: MdSchool },
-        { number: 3, title: "Informasi Akun", icon: MdSecurity },
-        { number: 4, title: "Konfirmasi", icon: MdCheckCircle }
-    ];
-
-    const departments = [
-        "Teknik Informatika",
-        "Sistem Informasi",
-        "Manajemen Informatika",
-        "Teknik Komputer",
-        "Keamanan Siber"
-    ];
-
-    const studyPrograms = [
-        "Teknik Informatika",
-        "Sistem Informasi",
-        "Manajemen Informatika"
-    ];
-
-    const positions = [
-        "Profesor",
-        "Lektor Kepala",
-        "Lektor",
-        "Asisten Profesor",
-        "Pengajar"
-    ];
-
-    const yearOptions = [
-        "2020", "2021", "2022", "2023", "2024", "2025"
+        { number: 1, title: "Informasi Pengguna", icon: MdPerson },
+        { number: 2, title: "Informasi Akun", icon: MdSecurity },
+        { number: 3, title: "Konfirmasi", icon: MdCheckCircle }
     ];
 
     return (
@@ -237,35 +208,33 @@ const AddUser = () => {
 
             {/* Form Container */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100" data-aos="fade-up" data-aos-delay="100">
+                {/* Success Message */}
+                {submitSuccess && (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-t-2xl">
+                        <div className="flex items-center">
+                            <MdCheckCircle className="w-5 h-5 text-green-600 mr-3" />
+                            <p className="text-green-800 font-medium">Pengguna berhasil ditambahkan!</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* General Error Message */}
+                {errors.general && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-t-2xl">
+                        <div className="flex items-center">
+                            <MdError className="w-5 h-5 text-red-600 mr-3" />
+                            <p className="text-red-800">{errors.general}</p>
+                        </div>
+                    </div>
+                )}
+
                 <form onSubmit={handleSubmit} className="p-8">
-                    {/* Step 1: Personal Information */}
+                    {/* Step 1: User Information */}
                     {currentStep === 1 && (
                         <div className="space-y-6" data-aos="fade-right">
                             <div className="mb-6">
-                                <h2 className="text-2xl font-bold text-gray-800 mb-2">Informasi Pribadi</h2>
-                                <p className="text-gray-600">Masukkan informasi pribadi pengguna</p>
-                            </div>
-
-                            {/* Profile Image Upload */}
-                            <div className="flex justify-center mb-8">
-                                <div className="relative">
-                                    <div className="w-32 h-32 rounded-full bg-gray-200 border-4 border-gray-300 flex items-center justify-center overflow-hidden">
-                                        {imagePreview ? (
-                                            <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-                                        ) : (
-                                            <MdImage className="w-12 h-12 text-gray-400" />
-                                        )}
-                                    </div>
-                                    <label className="absolute bottom-0 right-0 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full cursor-pointer transition-colors duration-200">
-                                        <MdUpload className="w-4 h-4" />
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={handleImageUpload}
-                                            className="hidden"
-                                        />
-                                    </label>
-                                </div>
+                                <h2 className="text-2xl font-bold text-gray-800 mb-2">Informasi Pengguna</h2>
+                                <p className="text-gray-600">Masukkan informasi dasar pengguna</p>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -276,33 +245,14 @@ const AddUser = () => {
                                     </label>
                                     <input
                                         type="text"
-                                        name="fullName"
-                                        value={formData.fullName}
+                                        name="fullname"
+                                        value={formData.fullname}
                                         onChange={handleInputChange}
-                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.fullName ? 'border-red-500' : 'border-gray-300'
+                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.fullname ? 'border-red-500' : 'border-gray-300'
                                             }`}
                                         placeholder="Masukkan nama lengkap"
                                     />
-                                    {errors.fullName && <p className="text-red-500 text-sm mt-1">{errors.fullName}</p>}
-                                </div>
-
-                                {/* User Type */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Tipe Pengguna <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        name="userType"
-                                        value={formData.userType}
-                                        onChange={handleInputChange}
-                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.userType ? 'border-red-500' : 'border-gray-300'
-                                            }`}
-                                    >
-                                        <option value="">Pilih Tipe Pengguna</option>
-                                        <option value="mahasiswa">Mahasiswa</option>
-                                        <option value="dosen">Dosen</option>
-                                    </select>
-                                    {errors.userType && <p className="text-red-500 text-sm mt-1">{errors.userType}</p>}
+                                    {errors.fullname && <p className="text-red-500 text-sm mt-1">{errors.fullname}</p>}
                                 </div>
 
                                 {/* Email */}
@@ -322,35 +272,23 @@ const AddUser = () => {
                                     {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
                                 </div>
 
-                                {/* Phone */}
+                                {/* Role */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Nomor Telepon <span className="text-red-500">*</span>
+                                        Role Pengguna <span className="text-red-500">*</span>
                                     </label>
-                                    <input
-                                        type="tel"
-                                        name="phone"
-                                        value={formData.phone}
+                                    <select
+                                        name="role"
+                                        value={formData.role}
                                         onChange={handleInputChange}
-                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.phone ? 'border-red-500' : 'border-gray-300'
+                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.role ? 'border-red-500' : 'border-gray-300'
                                             }`}
-                                        placeholder="Masukkan nomor telepon"
-                                    />
-                                    {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
-                                </div>
-
-                                {/* Birth Date */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Tanggal Lahir
-                                    </label>
-                                    <input
-                                        type="date"
-                                        name="birthDate"
-                                        value={formData.birthDate}
-                                        onChange={handleInputChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
-                                    />
+                                    >
+                                        <option value="">Pilih Role Pengguna</option>
+                                        <option value="super-admin">Super Admin</option>
+                                        <option value="student">Student</option>
+                                    </select>
+                                    {errors.role && <p className="text-red-500 text-sm mt-1">{errors.role}</p>}
                                 </div>
 
                                 {/* Gender */}
@@ -365,265 +303,42 @@ const AddUser = () => {
                                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
                                     >
                                         <option value="">Pilih Jenis Kelamin</option>
-                                        <option value="laki-laki">Laki-laki</option>
-                                        <option value="perempuan">Perempuan</option>
+                                        <option value="male">Laki-laki</option>
+                                        <option value="female">Perempuan</option>
                                     </select>
                                 </div>
-                            </div>
 
-                            {/* Address */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Alamat
-                                </label>
-                                <textarea
-                                    name="address"
-                                    value={formData.address}
-                                    onChange={handleInputChange}
-                                    rows="3"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
-                                    placeholder="Masukkan alamat lengkap"
-                                />
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Step 2: Academic Information */}
-                    {currentStep === 2 && (
-                        <div className="space-y-6" data-aos="fade-right">
-                            <div className="mb-6">
-                                <h2 className="text-2xl font-bold text-gray-800 mb-2">Informasi Akademik</h2>
-                                <p className="text-gray-600">Masukkan informasi akademik sesuai tipe pengguna</p>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Department */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Jurusan <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        name="department"
-                                        value={formData.department}
-                                        onChange={handleInputChange}
-                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.department ? 'border-red-500' : 'border-gray-300'
-                                            }`}
-                                    >
-                                        <option value="">Pilih Jurusan</option>
-                                        {departments.map((dept, index) => (
-                                            <option key={index} value={dept}>{dept}</option>
-                                        ))}
-                                    </select>
-                                    {errors.department && <p className="text-red-500 text-sm mt-1">{errors.department}</p>}
-                                </div>
-
-                                {/* Student specific fields */}
-                                {formData.userType === "mahasiswa" && (
-                                    <>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                NIM <span className="text-red-500">*</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                name="nim"
-                                                value={formData.nim}
-                                                onChange={handleInputChange}
-                                                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.nim ? 'border-red-500' : 'border-gray-300'
-                                                    }`}
-                                                placeholder="Masukkan NIM"
-                                            />
-                                            {errors.nim && <p className="text-red-500 text-sm mt-1">{errors.nim}</p>}
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Program Studi <span className="text-red-500">*</span>
-                                            </label>
-                                            <select
-                                                name="studyProgram"
-                                                value={formData.studyProgram}
-                                                onChange={handleInputChange}
-                                                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.studyProgram ? 'border-red-500' : 'border-gray-300'
-                                                    }`}
-                                            >
-                                                <option value="">Pilih Program Studi</option>
-                                                {studyPrograms.map((program, index) => (
-                                                    <option key={index} value={program}>{program}</option>
-                                                ))}
-                                            </select>
-                                            {errors.studyProgram && <p className="text-red-500 text-sm mt-1">{errors.studyProgram}</p>}
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Angkatan <span className="text-red-500">*</span>
-                                            </label>
-                                            <select
-                                                name="year"
-                                                value={formData.year}
-                                                onChange={handleInputChange}
-                                                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.year ? 'border-red-500' : 'border-gray-300'
-                                                    }`}
-                                            >
-                                                <option value="">Pilih Angkatan</option>
-                                                {yearOptions.map((year, index) => (
-                                                    <option key={index} value={year}>{year}</option>
-                                                ))}
-                                            </select>
-                                            {errors.year && <p className="text-red-500 text-sm mt-1">{errors.year}</p>}
-                                        </div>
-                                    </>
-                                )}
-
-                                {/* Lecturer specific fields */}
-                                {formData.userType === "dosen" && (
-                                    <>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                NIDN <span className="text-red-500">*</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                name="nidn"
-                                                value={formData.nidn}
-                                                onChange={handleInputChange}
-                                                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.nidn ? 'border-red-500' : 'border-gray-300'
-                                                    }`}
-                                                placeholder="Masukkan NIDN"
-                                            />
-                                            {errors.nidn && <p className="text-red-500 text-sm mt-1">{errors.nidn}</p>}
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Jabatan <span className="text-red-500">*</span>
-                                            </label>
-                                            <select
-                                                name="position"
-                                                value={formData.position}
-                                                onChange={handleInputChange}
-                                                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.position ? 'border-red-500' : 'border-gray-300'
-                                                    }`}
-                                            >
-                                                <option value="">Pilih Jabatan</option>
-                                                {positions.map((position, index) => (
-                                                    <option key={index} value={position}>{position}</option>
-                                                ))}
-                                            </select>
-                                            {errors.position && <p className="text-red-500 text-sm mt-1">{errors.position}</p>}
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Pendidikan <span className="text-red-500">*</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                name="education"
-                                                value={formData.education}
-                                                onChange={handleInputChange}
-                                                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.education ? 'border-red-500' : 'border-gray-300'
-                                                    }`}
-                                                placeholder="Contoh: S3 Ilmu Komputer"
-                                            />
-                                            {errors.education && <p className="text-red-500 text-sm mt-1">{errors.education}</p>}
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Spesialisasi
-                                            </label>
-                                            <input
-                                                type="text"
-                                                name="specialization"
-                                                value={formData.specialization}
-                                                onChange={handleInputChange}
-                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
-                                                placeholder="Contoh: Artificial Intelligence"
-                                            />
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            {/* Emergency Contact */}
-                            <div className="bg-gray-50 p-6 rounded-lg">
-                                <h3 className="text-lg font-semibold text-gray-800 mb-4">Kontak Darurat</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
+                                {/* Student ID - hanya tampil jika role adalah student */}
+                                {formData.role === "student" && (
+                                    <div className="md:col-span-2">
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Nama Kontak Darurat
+                                            Student ID <span className="text-red-500">*</span>
                                         </label>
                                         <input
                                             type="text"
-                                            name="emergencyContact"
-                                            value={formData.emergencyContact}
+                                            name="student_id"
+                                            value={formData.student_id}
                                             onChange={handleInputChange}
-                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
-                                            placeholder="Nama keluarga atau wali"
+                                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.student_id ? 'border-red-500' : 'border-gray-300'
+                                                }`}
+                                            placeholder="Masukkan Student ID"
                                         />
+                                        {errors.student_id && <p className="text-red-500 text-sm mt-1">{errors.student_id}</p>}
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Nomor Kontak Darurat
-                                        </label>
-                                        <input
-                                            type="tel"
-                                            name="emergencyPhone"
-                                            value={formData.emergencyPhone}
-                                            onChange={handleInputChange}
-                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
-                                            placeholder="Nomor telepon darurat"
-                                        />
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         </div>
                     )}
 
-                    {/* Step 3: Account Information */}
-                    {currentStep === 3 && (
+                    {/* Step 2: Account Information */}
+                    {currentStep === 2 && (
                         <div className="space-y-6" data-aos="fade-right">
                             <div className="mb-6">
                                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Informasi Akun</h2>
-                                <p className="text-gray-600">Buat akun untuk login sistem</p>
+                                <p className="text-gray-600">Buat password untuk login sistem</p>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Username */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Username <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        name="username"
-                                        value={formData.username}
-                                        onChange={handleInputChange}
-                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 ${errors.username ? 'border-red-500' : 'border-gray-300'
-                                            }`}
-                                        placeholder="Masukkan username"
-                                    />
-                                    {errors.username && <p className="text-red-500 text-sm mt-1">{errors.username}</p>}
-                                </div>
-
-                                {/* Status */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Status Akun
-                                    </label>
-                                    <select
-                                        name="status"
-                                        value={formData.status}
-                                        onChange={handleInputChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
-                                    >
-                                        <option value="active">Aktif</option>
-                                        <option value="inactive">Tidak Aktif</option>
-                                    </select>
-                                </div>
-
                                 {/* Password */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -677,21 +392,6 @@ const AddUser = () => {
                                 </div>
                             </div>
 
-                            {/* Notes */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Catatan Tambahan
-                                </label>
-                                <textarea
-                                    name="notes"
-                                    value={formData.notes}
-                                    onChange={handleInputChange}
-                                    rows="3"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
-                                    placeholder="Catatan atau informasi tambahan"
-                                />
-                            </div>
-
                             {/* Password Guidelines */}
                             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                                 <div className="flex items-start">
@@ -709,8 +409,8 @@ const AddUser = () => {
                         </div>
                     )}
 
-                    {/* Step 4: Confirmation */}
-                    {currentStep === 4 && (
+                    {/* Step 3: Confirmation */}
+                    {currentStep === 3 && (
                         <div className="space-y-6" data-aos="fade-right">
                             <div className="mb-6">
                                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Konfirmasi Data</h2>
@@ -720,49 +420,37 @@ const AddUser = () => {
                             <div className="bg-gray-50 p-6 rounded-lg">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
-                                        <h3 className="font-semibold text-gray-800 mb-3">Informasi Pribadi</h3>
+                                        <h3 className="font-semibold text-gray-800 mb-3">Informasi Pengguna</h3>
                                         <div className="space-y-2 text-sm">
-                                            <p><span className="text-gray-600">Nama:</span> {formData.fullName}</p>
+                                            <p><span className="text-gray-600">Nama:</span> {formData.fullname}</p>
                                             <p><span className="text-gray-600">Email:</span> {formData.email}</p>
-                                            <p><span className="text-gray-600">Telepon:</span> {formData.phone}</p>
-                                            <p><span className="text-gray-600">Tipe:</span> {formData.userType}</p>
-                                            {formData.birthDate && <p><span className="text-gray-600">Tanggal Lahir:</span> {formData.birthDate}</p>}
-                                            {formData.gender && <p><span className="text-gray-600">Jenis Kelamin:</span> {formData.gender}</p>}
+                                            <p><span className="text-gray-600">Role:</span> {formData.role === 'super-admin' ? 'Super Admin' : 'Student'}</p>
+                                            {formData.gender && <p><span className="text-gray-600">Jenis Kelamin:</span> {formData.gender === 'male' ? 'Laki-laki' : 'Perempuan'}</p>}
+                                            {formData.student_id && <p><span className="text-gray-600">Student ID:</span> {formData.student_id}</p>}
                                         </div>
                                     </div>
 
                                     <div>
-                                        <h3 className="font-semibold text-gray-800 mb-3">Informasi Akademik</h3>
+                                        <h3 className="font-semibold text-gray-800 mb-3">Informasi Akun</h3>
                                         <div className="space-y-2 text-sm">
-                                            <p><span className="text-gray-600">Jurusan:</span> {formData.department}</p>
-                                            {formData.userType === "mahasiswa" && (
-                                                <>
-                                                    <p><span className="text-gray-600">NIM:</span> {formData.nim}</p>
-                                                    <p><span className="text-gray-600">Program Studi:</span> {formData.studyProgram}</p>
-                                                    <p><span className="text-gray-600">Angkatan:</span> {formData.year}</p>
-                                                </>
-                                            )}
-                                            {formData.userType === "dosen" && (
-                                                <>
-                                                    <p><span className="text-gray-600">NIDN:</span> {formData.nidn}</p>
-                                                    <p><span className="text-gray-600">Jabatan:</span> {formData.position}</p>
-                                                    <p><span className="text-gray-600">Pendidikan:</span> {formData.education}</p>
-                                                    {formData.specialization && <p><span className="text-gray-600">Spesialisasi:</span> {formData.specialization}</p>}
-                                                </>
-                                            )}
+                                            <p><span className="text-gray-600">Password:</span> ********</p>
+                                            <p className="text-green-600 text-xs">✓ Password telah dikonfirmasi</p>
                                         </div>
                                     </div>
                                 </div>
+                            </div>
 
-                                {(formData.emergencyContact || formData.emergencyPhone) && (
-                                    <div className="mt-6 pt-6 border-t border-gray-200">
-                                        <h3 className="font-semibold text-gray-800 mb-3">Kontak Darurat</h3>
-                                        <div className="space-y-2 text-sm">
-                                            {formData.emergencyContact && <p><span className="text-gray-600">Nama:</span> {formData.emergencyContact}</p>}
-                                            {formData.emergencyPhone && <p><span className="text-gray-600">Telepon:</span> {formData.emergencyPhone}</p>}
-                                        </div>
+                            {/* Final confirmation note */}
+                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                <div className="flex items-start">
+                                    <MdInfo className="w-5 h-5 text-blue-600 mt-0.5 mr-3" />
+                                    <div>
+                                        <h4 className="text-blue-800 font-medium mb-2">Catatan:</h4>
+                                        <p className="text-blue-700 text-sm">
+                                            Pastikan semua data yang dimasukkan sudah benar. Data akan disimpan ke dalam sistem setelah Anda mengklik tombol "Simpan Pengguna".
+                                        </p>
                                     </div>
-                                )}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -780,7 +468,7 @@ const AddUser = () => {
                             Sebelumnya
                         </button>
 
-                        {currentStep < 4 ? (
+                        {currentStep < 3 ? (
                             <button
                                 type="button"
                                 onClick={nextStep}
@@ -792,10 +480,11 @@ const AddUser = () => {
                         ) : (
                             <button
                                 type="submit"
-                                className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-300 flex items-center gap-2 shadow-lg hover:shadow-xl"
+                                disabled={isLoading}
+                                className={`px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-300 flex items-center gap-2 shadow-lg hover:shadow-xl ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                                 <MdSave className="h-4 w-4" />
-                                Simpan Pengguna
+                                {isLoading ? 'Menyimpan...' : 'Simpan Pengguna'}
                             </button>
                         )}
                     </div>

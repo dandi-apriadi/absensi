@@ -239,148 +239,114 @@ export const createUser = async (req, res) => {
         }
 
         const {
-            user_id,
+            fullname,
             email,
             password,
-            full_name,
             role,
-            phone,
-            address,
-            status = 'active',
-            // Student specific
-            nim,
-            program_study,
-            semester,
-            academic_year,
-            entry_year,
-            guardian_name,
-            guardian_phone,
-            // Lecturer specific
-            nip,
-            department,
-            position,
-            expertise,
-            education_level,
-            room_office,
-            // Super Admin specific
-            admin_level,
-            permissions,
-            department_access
+            gender,
+            student_id
         } = req.body;
 
         // Validation
-        if (!user_id || !email || !password || !full_name || !role) {
+        if (!fullname || !email || !password || !role) {
             return res.status(400).json({
                 success: false,
-                message: "Data wajib harus diisi"
+                message: "Data wajib harus diisi: fullname, email, password, role"
             });
         }
 
-        // Check if user already exists
+        // Validate role
+        if (!['super-admin', 'student'].includes(role)) {
+            return res.status(400).json({
+                success: false,
+                message: "Role harus berupa 'super-admin' atau 'student'"
+            });
+        }
+
+        // Validate gender if provided
+        if (gender && !['male', 'female'].includes(gender)) {
+            return res.status(400).json({
+                success: false,
+                message: "Gender harus berupa 'male' atau 'female'"
+            });
+        }
+
+        // Validate student_id for student role
+        if (role === 'student' && !student_id) {
+            return res.status(400).json({
+                success: false,
+                message: "Student ID wajib diisi untuk role student"
+            });
+        }
+
+        // Check if email already exists
         const existingUser = await Users.findOne({
-            where: {
-                [db.Sequelize.Op.or]: [
-                    { email },
-                    { user_id }
-                ]
-            }
+            where: { email }
         });
 
         if (existingUser) {
             return res.status(409).json({
                 success: false,
-                message: "Email atau User ID sudah terdaftar"
+                message: "Email sudah terdaftar"
             });
         }
 
-        // Hash password
-        const hashedPassword = await argon2.hash(password);
+        // Check if student_id already exists (for student role)
+        if (role === 'student' && student_id) {
+            const existingStudent = await Users.findOne({
+                where: { student_id }
+            });
 
-        // Create user
+            if (existingStudent) {
+                return res.status(409).json({
+                    success: false,
+                    message: "Student ID sudah terdaftar"
+                });
+            }
+        }
+
+        // Create user (password akan di-hash secara otomatis oleh hook di model)
         const newUser = await Users.create({
-            user_id,
+            fullname,
             email,
-            password: hashedPassword,
-            full_name,
+            password,
             role,
-            phone,
-            address,
-            status
+            gender: gender || null,
+            student_id: role === 'student' ? student_id : null
         });
 
-        // Create role-specific details
-        let roleDetail = null;
-
-        if (role === 'student') {
-            if (!nim || !program_study || !semester || !entry_year) {
-                await newUser.destroy();
-                return res.status(400).json({
-                    success: false,
-                    message: "Data mahasiswa tidak lengkap"
-                });
-            }
-
-            roleDetail = await Students.create({
-                user_id: newUser.id,
-                nim,
-                program_study,
-                semester,
-                academic_year: academic_year || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`,
-                entry_year,
-                guardian_name,
-                guardian_phone
-            });
-        }
-        else if (role === 'lecturer') {
-            if (!nip || !department || !position) {
-                await newUser.destroy();
-                return res.status(400).json({
-                    success: false,
-                    message: "Data dosen tidak lengkap"
-                });
-            }
-
-            roleDetail = await Lecturers.create({
-                user_id: newUser.id,
-                nip,
-                department,
-                position,
-                expertise,
-                education_level,
-                room_office
-            });
-        }
-        else if (role === 'super-admin') {
-            if (!admin_level) {
-                await newUser.destroy();
-                return res.status(400).json({
-                    success: false,
-                    message: "Level admin harus ditentukan"
-                });
-            }
-
-            roleDetail = await SuperAdmins.create({
-                user_id: newUser.id,
-                admin_level,
-                permissions: permissions || [],
-                department_access: department_access || []
-            });
-        }
-
-        // Get complete user data
-        const completeUser = await getUserWithRoleDetails(newUser.id);
-        const { password: _, ...userData } = completeUser.toJSON();
+        // Remove password from response
+        const userResponse = { ...newUser.toJSON() };
+        delete userResponse.password;
 
         res.status(201).json({
             success: true,
-            message: "User berhasil dibuat",
+            message: "Pengguna berhasil ditambahkan",
             data: {
-                user: userData
+                user: userResponse
             }
         });
 
     } catch (error) {
         console.error('Create user error:', error);
+        
+        // Handle Sequelize validation errors
+        if (error.name === 'SequelizeValidationError') {
+            const validationErrors = error.errors.map(err => err.message).join(', ');
+            return res.status(400).json({
+                success: false,
+                message: `Validation error: ${validationErrors}`
+            });
+        }
+
+        // Handle Sequelize unique constraint errors
+        if (error.name === 'SequelizeUniqueConstraintError') {
+            return res.status(409).json({
+                success: false,
+                message: "Data sudah ada (email atau student_id duplikat)"
+            });
+        }
+
         res.status(500).json({
             success: false,
             message: "Terjadi kesalahan server"
