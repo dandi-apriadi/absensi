@@ -6,25 +6,17 @@ import {
   MdExitToApp,
   MdDashboard,
   MdPeople,
-  MdFace,
   MdAccessTime,
   MdHistory,
   MdMeetingRoom,
   MdManageAccounts,
-  MdPersonAdd,
-  MdFileUpload,
-  MdDataset,
-  MdVerified
+  MdPersonAdd
 } from "react-icons/md";
 
 // Import components (cleaned up - removed unused components)
 import SuperAdminDashboard from "../views/super-admin/dashboard";
 import UserManagement from "../views/super-admin/user-management";
 import AddUser from "../views/super-admin/user-management/components/AddUser";
-import FaceDatasetManagement from "../views/super-admin/face-dataset";
-import UploadDataset from "../views/super-admin/face-dataset/components/UploadDataset";
-import ManageDataset from "../views/super-admin/face-dataset/components/ManageDataset";
-import VerifyDataset from "../views/super-admin/face-dataset/components/VerifyDataset";
 import AttendanceManagement from "../views/super-admin/attendance";
 import AttendanceHistory from "../views/super-admin/attendance/components/AttendanceHistory";
 import RoomAccess from "../views/super-admin/room-access";
@@ -55,40 +47,6 @@ const routes = [
     path: "add-user",
     icon: <MdPersonAdd className="h-6 w-6 ml-10" />,
     component: <AddUser />,
-    secondary: true,
-  },
-  {
-    name: "Manajemen Dataset Wajah",
-    layout: "/admin",
-    path: "face-dataset",
-    icon: <MdFace className="h-6 w-6" />,
-    component: <FaceDatasetManagement />,
-  },
-  {
-    name: "Upload Dataset",
-    layout: "/admin",
-    parentPath: "face-dataset",
-    path: "upload-dataset",
-    icon: <MdFileUpload className="h-6 w-6 ml-10" />,
-    component: <UploadDataset />,
-    secondary: true,
-  },
-  {
-    name: "Kelola Dataset",
-    layout: "/admin",
-    parentPath: "face-dataset",
-    path: "manage-dataset",
-    icon: <MdDataset className="h-6 w-6 ml-10" />,
-    component: <ManageDataset />,
-    secondary: true,
-  },
-  {
-    name: "Verifikasi Dataset",
-    layout: "/admin",
-    parentPath: "face-dataset",
-    path: "verify-dataset",
-    icon: <MdVerified className="h-6 w-6 ml-10" />,
-    component: <VerifyDataset />,
     secondary: true,
   },
   {
