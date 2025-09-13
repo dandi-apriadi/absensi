@@ -14,7 +14,16 @@ export const verifyUser = async (req, res, next) => {
     console.log('Request headers:', req.headers);
     console.log('Cookies:', req.headers.cookie);
     console.log('==============================');
-    
+    // Fallback normalization (supports legacy keys userId/userRole)
+    if (req.session) {
+        if (!req.session.user_id && req.session.userId) {
+            req.session.user_id = req.session.userId;
+        }
+        if (!req.session.role && req.session.userRole) {
+            req.session.role = req.session.userRole;
+        }
+    }
+
     if (!req.session.user_id) {
         console.log('❌ No user_id in session - returning 401');
         return res.status(401).json({ 

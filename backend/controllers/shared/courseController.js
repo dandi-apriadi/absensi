@@ -8,6 +8,97 @@ import {
 import { Op } from "sequelize";
 
 // ===============================================
+// SCHEDULE CONFLICT UTILITIES (Single Room System)
+// ===============================================
+// Assumptions:
+// - All classes share one physical room (single-room policy)
+// - schedule field structure: [{ day, start_time, end_time }]
+// - Time format expected: HH:MM (24h) or HH:MM:SS (we'll normalize)
+
+const normalizeTime = (timeStr) => {
+    if (!timeStr) return null;
+    // Accept 'HH:MM' or 'HH:MM:SS'
+    const parts = timeStr.split(":");
+    if (parts.length === 2) return `${parts[0].padStart(2,'0')}:${parts[1].padStart(2,'0')}:00`;
+    if (parts.length === 3) return `${parts[0].padStart(2,'0')}:${parts[1].padStart(2,'0')}:${parts[2].padStart(2,'0')}`;
+    return null;
+};
+
+// Allowed days (lowercase)
+const ALLOWED_DAYS = ['senin','selasa','rabu','kamis','jumat','sabtu'];
+
+// Optional buffer (minutes) between classes to prevent immediate back-to-back overlap
+const SCHEDULE_BUFFER_MIN = parseInt(process.env.SCHEDULE_BUFFER_MIN || '0', 10); // 0 = no buffer
+
+const addMinutes = (timeStr, minutes) => {
+    if (!minutes) return timeStr;
+    const [h,m,s] = timeStr.split(':').map(Number);
+    const base = new Date(2000,0,1,h,m,s||0);
+    base.setMinutes(base.getMinutes() + minutes);
+    const hh = String(base.getHours()).padStart(2,'0');
+    const mm = String(base.getMinutes()).padStart(2,'0');
+    const ss = String(base.getSeconds()).padStart(2,'0');
+    return `${hh}:${mm}:${ss}`;
+};
+
+// Return true if two intervals overlap (inclusive start, exclusive end)
+const isOverlap = (aStart, aEnd, bStart, bEnd) => {
+    // Apply buffer: extend each interval by buffer minutes at edges
+    const bufferedAEnd = addMinutes(aEnd, SCHEDULE_BUFFER_MIN);
+    const bufferedBEnd = addMinutes(bEnd, SCHEDULE_BUFFER_MIN);
+    return aStart < bufferedBEnd && bStart < bufferedAEnd;
+};
+
+// Build human readable conflict message
+const formatConflictMessage = (conflicts) => {
+    if (!conflicts.length) return '';
+    return conflicts.map(c => `Bentrok dengan kelas: ${c.class_name} (${c.course_code || '-'}), Hari ${c.day} ${c.start_time}-${c.end_time}`).join('; ');
+};
+
+// Detect schedule conflicts against existing classes (single room)
+// excludeClassId: optional - used during update to exclude itself
+const detectScheduleConflicts = async (proposedSchedule, academic_year, semester_period, excludeClassId = null) => {
+    if (!Array.isArray(proposedSchedule) || proposedSchedule.length === 0) return [];
+
+    // Fetch all active classes in same academic year & semester (single-room context)
+    const whereClause = { academic_year, semester_period, status: { [Op.ne]: 'cancelled' } };
+    if (excludeClassId) whereClause.id = { [Op.ne]: excludeClassId };
+
+    const existing = await CourseClasses.findAll({ where: whereClause });
+
+    const conflicts = [];
+
+    for (const proposed of proposedSchedule) {
+        const pDay = proposed.day;
+        const pStart = normalizeTime(proposed.start_time);
+        const pEnd = normalizeTime(proposed.end_time);
+        if (!pDay || !pStart || !pEnd) continue; // skip invalid rows
+        if (!ALLOWED_DAYS.includes(pDay.toLowerCase())) continue; // ignore unknown day
+
+        for (const cls of existing) {
+            const scheduleArray = Array.isArray(cls.schedule) ? cls.schedule : [];
+            for (const exist of scheduleArray) {
+                if (!exist.day || exist.day.toLowerCase() !== pDay.toLowerCase()) continue;
+                const eStart = normalizeTime(exist.start_time);
+                const eEnd = normalizeTime(exist.end_time);
+                if (!eStart || !eEnd) continue;
+                if (isOverlap(pStart, pEnd, eStart, eEnd)) {
+                    conflicts.push({
+                        class_id: cls.id,
+                        class_name: cls.class_name,
+                        course_code: cls.course_code, // may be undefined unless joined; keep placeholder
+                        day: pDay,
+                        start_time: proposed.start_time,
+                        end_time: proposed.end_time
+                    });
+                }
+            }
+        }
+    }
+    return conflicts;
+};
+
+// ===============================================
 // COURSE MANAGEMENT CONTROLLERS
 // ===============================================
 
@@ -323,14 +414,27 @@ export const createCourseClass = async (req, res) => {
         }
 
         // Normalize schedule
-        let normalizedSchedule = schedule;
-        if (!Array.isArray(normalizedSchedule) || normalizedSchedule.length === 0) {
-            normalizedSchedule = [];
+        let normalizedSchedule = Array.isArray(schedule) ? schedule.filter(s => s && s.day && s.start_time && s.end_time) : [];
+
+        // Conflict detection (single-room constraint)
+        if (normalizedSchedule.length > 0) {
+            const conflicts = await detectScheduleConflicts(normalizedSchedule, academic_year, semester_period, null);
+            if (conflicts.length) {
+                const summary = `Ditemukan ${conflicts.length} konflik jadwal`;
+                const details = formatConflictMessage(conflicts);
+                return res.status(409).json({
+                    success: false,
+                    message: 'Konflik jadwal terdeteksi. Periksa kembali waktu yang diajukan.',
+                    summary,
+                    details,
+                    conflicts
+                });
+            }
         }
 
         const courseClass = await CourseClasses.create({
             course_id,
-            lecturer_name: lecturer_name || null, // Changed to store lecturer_name instead of lecturer_id
+            lecturer_name: lecturer_name || null,
             class_name,
             academic_year,
             semester_period,
@@ -389,7 +493,7 @@ export const updateCourseClass = async (req, res) => {
             });
         }
 
-        // Update the class
+        // Prepare update data
         const updateData = {};
         if (class_name !== undefined) updateData.class_name = class_name;
         if (lecturer_name !== undefined) updateData.lecturer_name = lecturer_name;
@@ -397,7 +501,28 @@ export const updateCourseClass = async (req, res) => {
         if (semester_period !== undefined) updateData.semester_period = semester_period;
         if (max_students !== undefined) updateData.max_students = max_students;
         if (status !== undefined) updateData.status = status;
-        if (schedule !== undefined) updateData.schedule = schedule;
+
+        // Handle schedule with conflict detection if provided
+        if (schedule !== undefined) {
+            const normalizedSchedule = Array.isArray(schedule) ? schedule.filter(s => s && s.day && s.start_time && s.end_time) : [];
+            if (normalizedSchedule.length > 0) {
+                const effectiveAcademicYear = academic_year || courseClass.academic_year;
+                const effectiveSemester = semester_period || courseClass.semester_period;
+                const conflicts = await detectScheduleConflicts(normalizedSchedule, effectiveAcademicYear, effectiveSemester, courseClass.id);
+                if (conflicts.length) {
+                    const summary = `Ditemukan ${conflicts.length} konflik jadwal`;
+                    const details = formatConflictMessage(conflicts);
+                    return res.status(409).json({
+                        success: false,
+                        message: 'Konflik jadwal terdeteksi. Periksa kembali waktu yang diajukan.',
+                        summary,
+                        details,
+                        conflicts
+                    });
+                }
+            }
+            updateData.schedule = normalizedSchedule;
+        }
 
         await courseClass.update(updateData);
 
@@ -416,6 +541,33 @@ export const updateCourseClass = async (req, res) => {
 };
 
 /**
+ * Check schedule conflicts (utility endpoint)
+ * Body: { schedule: [{day, start_time, end_time}], academic_year, semester_period, exclude_id? }
+ */
+export const checkClassScheduleConflicts = async (req, res) => {
+    try {
+        const { schedule, academic_year, semester_period, exclude_id } = req.body;
+        if (!academic_year || !semester_period) {
+            return res.status(400).json({
+                success: false,
+                message: 'academic_year dan semester_period wajib diisi'
+            });
+        }
+        const normalizedSchedule = Array.isArray(schedule) ? schedule.filter(s => s && s.day && s.start_time && s.end_time) : [];
+        if (normalizedSchedule.length === 0) {
+            return res.status(200).json({ success: true, conflicts: [] });
+        }
+    const conflicts = await detectScheduleConflicts(normalizedSchedule, academic_year, semester_period, exclude_id || null);
+    const summary = conflicts.length ? `Ditemukan ${conflicts.length} konflik jadwal` : 'Tidak ada konflik';
+    const details = conflicts.length ? formatConflictMessage(conflicts) : null;
+    res.status(200).json({ success: true, summary, details, conflicts });
+    } catch (error) {
+        console.error('Check conflicts error:', error);
+        res.status(500).json({ success: false, message: 'Gagal memeriksa konflik jadwal' });
+    }
+};
+
+/**
  * Delete course class (Super Admin only)
  */
 export const deleteCourseClass = async (req, res) => {
@@ -429,15 +581,14 @@ export const deleteCourseClass = async (req, res) => {
         console.log('Middleware role:', req.role);
         console.log('Request headers:', req.headers);
         console.log('=========================');
-
-        // Only super-admin can delete classes
+        // Allowed roles (expandable)
         const userRole = req.role || req.session?.role;
-        
-        if (userRole !== 'super-admin') {
+        const allowedRoles = ['super-admin', 'admin'];
+        if (!allowedRoles.includes(userRole)) {
             console.log('Access denied for role:', userRole);
             return res.status(403).json({
                 success: false,
-                message: "Akses ditolak. Hanya super admin yang dapat menghapus kelas."
+                message: `Akses ditolak. Hanya role: ${allowedRoles.join(', ')} yang dapat menghapus kelas.`
             });
         }
 

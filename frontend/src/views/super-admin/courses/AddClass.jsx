@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { 
@@ -151,6 +151,12 @@ const AddClass = () => {
     { day: "Senin", start_time: "08:00", end_time: "09:40" },
   ]);
   const [message, setMessage] = useState(null);
+  // Schedule conflict checking states
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
+  const [conflictChecked, setConflictChecked] = useState(false); // whether last schedule payload was checked
+  const [conflicts, setConflicts] = useState([]); // array from backend
+  const [conflictSummary, setConflictSummary] = useState("");
+  const [conflictDetails, setConflictDetails] = useState("");
 
   // Initialize AOS for animations
   useEffect(() => {
@@ -222,9 +228,82 @@ const AddClass = () => {
     setSchedule((s) => s.map((row, i) => (i === idx ? { ...row, [key]: value } : row)));
   };
 
+  // Reset conflict state whenever schedule changes (user must re-check)
+  useEffect(() => {
+    setConflictChecked(false);
+    setConflicts([]);
+    setConflictSummary("");
+    setConflictDetails("");
+  }, [schedule]);
+
+  const formatConflictLine = (c) => {
+    if (!c || typeof c !== 'object') return JSON.stringify(c);
+    // Try to derive class name / existing
+    const cls = c.class_name || c.other_class_name || c?.existing?.class_name || c?.target?.class_name;
+    const day = c.day || c.target_day || c?.existing?.day;
+    const start = c.start_time || c.target_start_time || c?.existing?.start_time;
+    const end = c.end_time || c.target_end_time || c?.existing?.end_time;
+    const otherRange = c?.existing ? `${c.existing.start_time}-${c.existing.end_time}` : c.other_range || '';
+    if (cls) {
+      return `${day} ${start}-${end} bentrok dengan kelas ${cls} ${otherRange ? '(' + otherRange + ')' : ''}`;
+    }
+    return `${day} ${start}-${end} konflik (${Object.keys(c).join(', ')})`;
+  };
+
+  const checkScheduleConflicts = useCallback(async () => {
+    setCheckingConflicts(true);
+    setConflictChecked(false);
+    setMessage(null);
+    try {
+      // Basic front-end validation: ensure start_time < end_time for each row
+      const invalidRow = schedule.find(r => r.start_time && r.end_time && r.start_time >= r.end_time);
+      if (invalidRow) {
+        setCheckingConflicts(false);
+        setMessage({ type: 'error', text: 'Validasi waktu: waktu mulai harus lebih awal dari waktu selesai.' });
+        return;
+      }
+      const payload = { 
+        schedule,
+        academic_year: form.academic_year || '2024/2025',
+        semester_period: form.semester_period || 'ganjil'
+      };
+      // Using demo route? Real route should be /api/courses/classes/check-conflicts
+      const url = `${API_BASE}/api/courses/classes/check-conflicts`;
+      const res = await axios.post(url, payload, { withCredentials: true });
+      // Success no conflicts expected 200
+      setConflicts([]);
+      setConflictSummary(res.data?.summary || "Tidak ada konflik jadwal");
+      setConflictDetails(res.data?.details || "Semua slot jadwal aman.");
+      setConflictChecked(true);
+    } catch (err) {
+      // If backend returns 409 we parse conflicts
+      const status = err?.response?.status;
+      if (status === 409) {
+        const data = err.response.data || {};
+        setConflicts(data.conflicts || []);
+        setConflictSummary(data.summary || data.message || "Terdapat konflik jadwal");
+        setConflictDetails(data.details || "Periksa daftar konflik dibawah.");
+        setConflictChecked(true);
+      } else {
+        setMessage({ type: 'error', text: err?.response?.data?.message || 'Gagal memeriksa konflik jadwal' });
+      }
+    } finally {
+      setCheckingConflicts(false);
+    }
+  }, [schedule]);
+
   const onSubmit = async (e) => {
     e.preventDefault();
     setMessage(null);
+    // Ensure schedule conflicts checked first
+    if (!conflictChecked) {
+      await checkScheduleConflicts();
+      return; // submit will be re-attempted by user after check
+    }
+    if (conflicts.length > 0) {
+      setMessage({ type: 'error', text: 'Tidak dapat menyimpan: masih ada konflik jadwal.' });
+      return;
+    }
     try {
       setLoading(true);
       const payload = {
@@ -233,6 +312,8 @@ const AddClass = () => {
         lecturer_name: form.lecturer_name || undefined, // Changed from lecturer_id
         max_students: Number(form.max_students) || 40,
         schedule,
+        academic_year: form.academic_year,
+        semester_period: form.semester_period
       };
       const res = await axios.post(`${API_BASE}/api/courses/classes/demo`, payload, {
         headers: {
@@ -240,8 +321,10 @@ const AddClass = () => {
         }
       });
       setMessage({ type: "success", text: "Kelas berhasil dibuat" });
-      // Reset minimal
-      setForm((f) => ({ ...f, class_name: "A" }));
+      // Redirect ke halaman manajemen kelas setelah sedikit delay untuk feedback
+      setTimeout(() => {
+        navigate('/admin/class-management');
+      }, 600);
     } catch (err) {
       const text = err?.response?.data?.message || "Gagal membuat kelas";
       setMessage({ type: "error", text });
@@ -463,14 +546,34 @@ const AddClass = () => {
               </div>
               <h2 className="text-xl font-bold text-gray-800">Jadwal Kelas</h2>
             </div>
-            <button 
-              type="button" 
-              onClick={addScheduleRow} 
-              className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-2xl flex items-center gap-2 font-medium transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-            >
-              <MdAdd className="w-5 h-5" /> 
-              Tambah Jadwal
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button 
+                type="button" 
+                onClick={addScheduleRow} 
+                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-2xl flex items-center gap-2 font-medium transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                <MdAdd className="w-5 h-5" /> 
+                Tambah Jadwal
+              </button>
+              <button
+                type="button"
+                onClick={checkScheduleConflicts}
+                disabled={checkingConflicts}
+                className="px-4 py-2 bg-white border border-gray-300 hover:border-gray-400 text-gray-700 rounded-2xl flex items-center gap-2 font-medium transition-all duration-300 disabled:opacity-60"
+              >
+                {checkingConflicts ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+                    Mengecek...
+                  </>
+                ) : (
+                  <>
+                    <MdSchedule className="w-5 h-5" />
+                    Cek Konflik
+                  </>
+                )}
+              </button>
+            </div>
           </div>
           
           <div className="space-y-4">
@@ -542,9 +645,37 @@ const AddClass = () => {
               <div className="text-sm text-amber-800">
                 <p className="font-medium mb-1">Sistem Satu Pintu</p>
                 <p>Semua kelas menggunakan ruangan fisik yang sama. Pastikan tidak ada konflik jadwal dengan kelas lain.</p>
+                {!conflictChecked && (
+                  <p className="mt-1 text-amber-700 italic">Lakukan <strong>Cek Konflik</strong> sebelum menyimpan.</p>
+                )}
               </div>
             </div>
           </div>
+
+          {/* Conflict Results */}
+          {conflictChecked && (
+            <div className={`mt-6 p-5 rounded-2xl border transition-all ${conflicts.length === 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+              <div className="flex items-start gap-3">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${conflicts.length === 0 ? 'bg-emerald-500' : 'bg-red-500'}`}>
+                  {conflicts.length === 0 ? <MdAutoAwesome className="w-4 h-4 text-white" /> : <MdWarning className="w-4 h-4 text-white" />}
+                </div>
+                <div className="flex-1 text-sm">
+                  <p className="font-semibold mb-1">{conflictSummary}</p>
+                  {conflictDetails && <p className="text-gray-700 mb-2">{conflictDetails}</p>}
+                  {conflicts.length > 0 && (
+                    <ul className="list-disc ml-5 space-y-1 text-red-700">
+                      {conflicts.map((c, i) => (
+                        <li key={i}>{formatConflictLine(c)}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {conflicts.length === 0 && (
+                    <p className="text-emerald-700">Jadwal aman. Anda dapat menyimpan kelas.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Submit Section */}
@@ -559,7 +690,7 @@ const AddClass = () => {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !conflictChecked || conflicts.length > 0}
               className="px-8 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-2xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[140px]"
             >
               {loading ? (
@@ -570,7 +701,7 @@ const AddClass = () => {
               ) : (
                 <>
                   <MdSave className="w-5 h-5" />
-                  Simpan Kelas
+                  { !conflictChecked ? 'Cek Jadwal Dulu' : (conflicts.length > 0 ? 'Perbaiki Konflik' : 'Simpan Kelas') }
                 </>
               )}
             </button>

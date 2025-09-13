@@ -26,4 +26,18 @@ router.use('/api/reports', ReportRoute);
 // Demo routes (no authentication required)
 router.use('/api', DemoRoute);
 
+// Test auth route (debugging session data)
+router.get('/api/test-auth', (req, res) => {
+	res.json({
+		hasSession: !!req.session,
+		session: req.session ? {
+			id: req.session.id,
+			user_id: req.session.user_id,
+			role: req.session.role,
+			legacy_userId: req.session.userId,
+			legacy_userRole: req.session.userRole
+		} : null
+	});
+});
+
 export default router;

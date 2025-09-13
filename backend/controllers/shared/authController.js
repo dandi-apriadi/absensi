@@ -42,9 +42,18 @@ export const login = async (req, res) => {
             });
         }
 
-        // Create session
+        // Create session (normalized snake_case keys to match middleware)
+        req.session.user_id = user.user_id;
+        req.session.role = user.role;
+        // Backward compatibility fields (optional; can remove later)
         req.session.userId = user.user_id;
         req.session.userRole = user.role;
+
+        console.log('Session after login:', {
+            id: req.session.id,
+            user_id: req.session.user_id,
+            role: req.session.role
+        });
 
         // Prepare simplified response data
         const userData = {

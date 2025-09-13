@@ -12,7 +12,8 @@ import {
     enrollStudent,
     updateEnrollmentStatus,
     deleteEnrollment,
-    getAllClassesWithStats
+    getAllClassesWithStats,
+    checkClassScheduleConflicts
 } from '../../controllers/shared/courseController.js';
 import { verifyUser } from '../../middleware/AuthUser.js';
 import createCourseClassDemo from '../../controllers/shared/demoController.js';
@@ -35,6 +36,7 @@ router.get('/:course_id/classes', getCourseClasses);
 router.post('/classes', verifyUser, createCourseClass);
 router.put('/classes/:id', verifyUser, updateCourseClass); // Update class
 router.delete('/classes/:id', verifyUser, deleteCourseClass); // Delete class
+router.post('/classes/check-conflicts', verifyUser, checkClassScheduleConflicts); // Check schedule conflicts
 router.post('/classes/demo', createCourseClassDemo); // Demo endpoint without auth for testing
 
 // Enrollments
