@@ -7,7 +7,6 @@ import { SidebarLinks } from "./components/Links";
 
 // Route imports
 import routesAdmin from "../../routes/routes-super-admin.js";
-import routesStudent from "../../routes/routes-student.js";
 
 // Assets
 import proposalLogo from "../../assets/img/profile/poli.png";
@@ -122,7 +121,6 @@ const Sidebar = ({ onClose }) => {
     try {
       const roleRoutes = {
         'super-admin': routesAdmin,
-        'student': routesStudent,
       };
 
       const selectedRoutes = roleRoutes[user?.role];

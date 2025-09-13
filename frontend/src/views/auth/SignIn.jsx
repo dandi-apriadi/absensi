@@ -31,14 +31,26 @@ const SignIn = () => {
       console.log("Login successful:", user);
       console.log("User role:", user.role);
 
-      // Map roles to their respective dashboard routes
-      const roleRoutes = {
-        "super-admin": "/admin/default",
-        "lecturer": "/lecturer/default",
-        "student": "/student/default"
-      };
+      // Only allow super-admin to login
+      if (user.role !== 'super-admin') {
+        Swal.fire({
+          icon: 'error',
+          title: 'Access Denied',
+          text: 'Only administrators are allowed to access this system',
+          confirmButtonColor: '#dc2626',
+          timer: 3000,
+          timerProgressBar: true
+        });
+        
+        // Reset auth state and prevent navigation
+        setTimeout(() => {
+          dispatch(reset());
+        }, 100);
+        return;
+      }
 
-      const route = roleRoutes[user.role] || "/admin/default";
+      // Navigate to admin dashboard for super-admin
+      const route = "/admin/default";
       console.log("Navigating to:", route);
 
       // Navigate first, then reset
