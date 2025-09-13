@@ -85,6 +85,11 @@ const CourseClasses = db.define('course_classes', {
         allowNull: true,
         comment: 'Reference to users table where role = lecturer (manual relationship)'
     },
+    lecturer_name: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: 'Nama dosen pengampu mata kuliah'
+    },
     class_name: {
         type: DataTypes.STRING(10),
         allowNull: false,

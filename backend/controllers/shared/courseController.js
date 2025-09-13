@@ -65,10 +65,24 @@ export const getCourses = async (req, res) => {
  */
 export const createCourse = async (req, res) => {
     try {
-        if (req.session.role !== 'super-admin') {
+        // Debug: Log session and user information
+        console.log('Create Course - Session data:', {
+            sessionExists: !!req.session,
+            sessionUserId: req.session?.user_id,
+            sessionRole: req.session?.role,
+            middlewareUserId: req.user_id,
+            middlewareRole: req.role
+        });
+        
+        // Allow super-admin and admin roles to create courses
+        // Use role from middleware (req.role) or fallback to session
+        const userRole = req.role || req.session?.role;
+        const allowedRoles = ['super-admin', 'admin'];
+        
+        if (!userRole || !allowedRoles.includes(userRole)) {
             return res.status(403).json({
                 success: false,
-                message: "Akses ditolak. Hanya super admin yang dapat membuat mata kuliah"
+                message: `Akses ditolak. Role '${userRole}' tidak diizinkan untuk membuat mata kuliah. Hanya super admin yang dapat membuat mata kuliah.`
             });
         }
 
@@ -260,17 +274,31 @@ export const getCourseClasses = async (req, res) => {
  */
 export const createCourseClass = async (req, res) => {
     try {
-        if (req.session.role !== 'super-admin' && req.session.role !== 'lecturer') {
+        // Debug: Log session and user information
+        console.log('Session data:', {
+            sessionExists: !!req.session,
+            sessionUserId: req.session?.user_id,
+            sessionRole: req.session?.role,
+            middlewareUserId: req.user_id,
+            middlewareRole: req.role
+        });
+        
+        // Allow super-admin, admin, and lecturer roles to create classes
+        // Use role from middleware (req.role) or fallback to session
+        const userRole = req.role || req.session?.role;
+        const allowedRoles = ['super-admin', 'admin', 'lecturer'];
+        
+        if (!userRole || !allowedRoles.includes(userRole)) {
             return res.status(403).json({
                 success: false,
-                message: "Akses ditolak. Hanya admin atau dosen yang dapat membuat kelas"
+                message: `Akses ditolak. Role '${userRole}' tidak diizinkan untuk membuat kelas. Hanya admin atau dosen yang dapat membuat kelas.`
             });
         }
 
         const {
             course_id,
             class_name,
-            lecturer_id,
+            lecturer_name, // Changed from lecturer_id to lecturer_name
             academic_year,
             semester_period,
             max_students,
@@ -302,7 +330,7 @@ export const createCourseClass = async (req, res) => {
 
         const courseClass = await CourseClasses.create({
             course_id,
-            lecturer_id: lecturer_id || null,
+            lecturer_name: lecturer_name || null, // Changed to store lecturer_name instead of lecturer_id
             class_name,
             academic_year,
             semester_period,
@@ -504,6 +532,116 @@ export const updateEnrollmentStatus = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Gagal memperbarui status pendaftaran"
+        });
+    }
+};
+
+/**
+ * Delete enrollment (Super Admin or Lecturer)
+ */
+export const deleteEnrollment = async (req, res) => {
+    try {
+        if (req.session.role !== 'super-admin' && req.session.role !== 'lecturer') {
+            return res.status(403).json({
+                success: false,
+                message: "Akses ditolak. Hanya admin atau dosen yang dapat menghapus pendaftaran"
+            });
+        }
+
+        const { id } = req.params;
+
+        const enrollment = await StudentEnrollments.findByPk(id);
+        if (!enrollment) {
+            return res.status(404).json({
+                success: false,
+                message: "Data pendaftaran tidak ditemukan"
+            });
+        }
+
+        await enrollment.destroy();
+
+        res.status(200).json({
+            success: true,
+            message: "Mahasiswa berhasil dihapus dari kelas"
+        });
+    } catch (error) {
+        console.error('Delete enrollment error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Gagal menghapus pendaftaran mahasiswa"
+        });
+    }
+};
+
+/**
+ * Get all classes with enrollment statistics
+ */
+export const getAllClassesWithStats = async (req, res) => {
+    try {
+        const { page = 1, limit = 100, status, program_study } = req.query;
+        const offset = (page - 1) * limit;
+
+        // Build where clause for filtering
+        let whereClause = {};
+        if (status) {
+            whereClause.status = status;
+        }
+
+        // Get all classes
+        const classes = await CourseClasses.findAndCountAll({
+            where: whereClause,
+            order: [["created_at", "DESC"]],
+            limit: parseInt(limit),
+            offset: offset
+        });
+
+        // For each class, get the course info and enrollment count
+        const classesWithStats = await Promise.all(
+            classes.rows.map(async (cls) => {
+                // Get course information
+                const course = await Courses.findByPk(cls.course_id);
+                
+                // Skip if course doesn't match program study filter
+                if (program_study && course?.program_study !== program_study) {
+                    return null;
+                }
+                
+                // Get enrollment count
+                const enrollmentCount = await StudentEnrollments.count({
+                    where: { 
+                        class_id: cls.id,
+                        status: 'enrolled'
+                    }
+                });
+                
+                return {
+                    ...cls.toJSON(),
+                    course: course?.toJSON() || null,
+                    enrolled_count: enrollmentCount
+                };
+            })
+        );
+
+        // Filter out null entries (courses that didn't match program study filter)
+        const filteredClasses = classesWithStats.filter(cls => cls !== null);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                classes: filteredClasses,
+                pagination: {
+                    total: filteredClasses.length,
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    totalPages: Math.ceil(filteredClasses.length / limit)
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Get all classes with stats error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Gagal mengambil data kelas dengan statistik"
         });
     }
 };

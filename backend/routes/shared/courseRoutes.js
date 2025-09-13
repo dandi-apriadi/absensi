@@ -8,8 +8,12 @@ import {
     createCourseClass,
     getClassEnrollments,
     enrollStudent,
-    updateEnrollmentStatus
+    updateEnrollmentStatus,
+    deleteEnrollment,
+    getAllClassesWithStats
 } from '../../controllers/shared/courseController.js';
+import { verifyUser } from '../../middleware/AuthUser.js';
+import createCourseClassDemo from '../../controllers/shared/demoController.js';
 
 const router = express.Router();
 
@@ -19,17 +23,20 @@ const router = express.Router();
 
 // Courses
 router.get('/', getCourses);
-router.post('/', createCourse);
-router.put('/:id', updateCourse);
-router.delete('/:id', deleteCourse);
+router.post('/', verifyUser, createCourse);
+router.put('/:id', verifyUser, updateCourse);
+router.delete('/:id', verifyUser, deleteCourse);
 
 // Course Classes
+router.get('/classes/all-with-stats', getAllClassesWithStats); // New endpoint for all classes with stats
 router.get('/:course_id/classes', getCourseClasses);
-router.post('/classes', createCourseClass);
+router.post('/classes', verifyUser, createCourseClass);
+router.post('/classes/demo', createCourseClassDemo); // Demo endpoint without auth for testing
 
 // Enrollments
 router.get('/classes/:class_id/enrollments', getClassEnrollments);
 router.post('/enrollments', enrollStudent);
 router.patch('/enrollments/:id/status', updateEnrollmentStatus);
+router.delete('/enrollments/:id', deleteEnrollment);
 
 export default router;

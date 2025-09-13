@@ -42,33 +42,65 @@ const UserManagement = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [creating, setCreating] = useState(false);
-    const [newUser, setNewUser] = useState({ full_name: '', email: '', role: 'student', status: 'active' });
+    const [newUser, setNewUser] = useState({ 
+        full_name: '', 
+        email: '', 
+        user_id: '',
+        phone: '',
+        role: 'student', 
+        status: 'active',
+        password: '',
+        department: '',
+        program_study: ''
+    });
     const [statsData, setStatsData] = useState({ loading: true, error: null, overview: null });
 
     const loadUsers = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const apiRole = filterRole === 'dosen' ? 'lecturer' : (filterRole === 'mahasiswa' ? 'student' : (filterRole === 'all' ? '' : filterRole));
+            const apiRole = filterRole === 'all' ? '' : filterRole; // send 'student', 'lecturer', 'super-admin' directly
             const data = await fetchUsers({
                 page: currentPage,
                 limit: usersPerPage,
                 search: searchTerm,
                 role: apiRole,
-                status: filterStatus
+                status: filterStatus === 'all' ? '' : filterStatus
             });
+            
+            console.log('Raw API data:', data); // Debug log
+            console.log('Raw users array:', data.users); // Debug log
+            
             // backend returns users with fields role maybe in english (lecturer/student) adjust mapping
-            const mapped = (data.users || []).map(u => ({
-                id: u.id,
-                name: u.full_name,
-                email: u.email,
-                phone: u.phone || '-',
-                role: u.role === 'lecturer' ? 'dosen' : (u.role === 'student' ? 'mahasiswa' : u.role),
-                status: u.status,
-                department: u.department || u.program_study || '-',
-                avatar: u.profile_picture || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(u.full_name),
-                lastLogin: u.last_login || '-'
-            }));
+            const mapped = (data.users || []).map((u, index) => {
+                console.log(`Processing user ${index + 1}:`, u); // Debug log
+                console.log('Available fields:', Object.keys(u)); // Debug log
+                console.log('fullname field:', u.fullname); // Debug log
+                console.log('full_name field:', u.full_name); // Debug log
+                console.log('name field:', u.name); // Debug log
+                
+                const userName = u.full_name || u.fullname || u.name || 'Nama tidak tersedia';
+                console.log('Final userName:', userName); // Debug log
+                
+                return {
+                    id: u.id,
+                    user_id: u.user_id || '-',
+                    name: userName,
+                    email: u.email || '-',
+                    phone: u.phone || '-',
+                    role: u.role, // keep original role value for filtering
+                    roleDisplay: u.role === 'lecturer' ? 'dosen' : (u.role === 'student' ? 'mahasiswa' : (u.role === 'super-admin' ? 'super-admin' : u.role)),
+                    status: u.status || 'active',
+                    department: u.department || u.program_study || '-',
+                    avatar: u.profile_picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random`,
+                    lastLogin: u.last_login ? new Date(u.last_login).toLocaleDateString('id-ID') : '-',
+                    gender: u.gender || '-',
+                    address: u.address || '-',
+                    birth_date: u.birth_date || '-',
+                    created_at: u.created_at,
+                    updated_at: u.updated_at
+                };
+            });
             setUsers(mapped);
             if (data.pagination) {
                 setTotalPages(data.pagination.totalPages || 1);
@@ -108,11 +140,31 @@ const UserManagement = () => {
     };
 
     const getRoleColor = (role) => {
-        return role === 'dosen' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800';
+        switch(role) {
+            case 'dosen':
+            case 'lecturer':
+                return 'bg-purple-100 text-purple-800';
+            case 'mahasiswa':
+            case 'student':
+                return 'bg-blue-100 text-blue-800';
+            case 'super-admin':
+                return 'bg-red-100 text-red-800';
+            default:
+                return 'bg-gray-100 text-gray-800';
+        }
     };
 
     const getStatusColor = (status) => {
-        return status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+        switch(status) {
+            case 'active':
+                return 'bg-green-100 text-green-800';
+            case 'inactive':
+                return 'bg-red-100 text-red-800';
+            case 'suspended':
+                return 'bg-yellow-100 text-yellow-800';
+            default:
+                return 'bg-gray-100 text-gray-800';
+        }
     };
 
     const stats = (() => {
@@ -147,12 +199,25 @@ const UserManagement = () => {
                 email: newUser.email,
                 password: newUser.password || 'Password123!',
                 full_name: newUser.full_name,
-                role: newUser.role === 'mahasiswa' ? 'student' : (newUser.role === 'dosen' ? 'lecturer' : newUser.role),
-                status: newUser.status
+                phone: newUser.phone,
+                role: newUser.role, // send as is since backend expects 'student', 'lecturer', 'super-admin'
+                status: newUser.status,
+                department: newUser.department,
+                program_study: newUser.program_study
             };
             await apiCreateUser(payload);
             await loadUsers();
-            setNewUser({ full_name: '', email: '', role: 'student', status: 'active' });
+            setNewUser({ 
+                full_name: '', 
+                email: '', 
+                user_id: '',
+                phone: '',
+                role: 'student', 
+                status: 'active',
+                password: '',
+                department: '',
+                program_study: ''
+            });
             Swal.fire('Sukses', 'User berhasil dibuat', 'success');
         } catch (e) {
             Swal.fire('Error', e.response?.data?.message || 'Gagal membuat user', 'error');
@@ -206,7 +271,13 @@ const UserManagement = () => {
                             <input value={newUser.full_name} onChange={e=>setNewUser(n=>({...n, full_name:e.target.value}))} placeholder="Nama Lengkap" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                         </div>
                         <div className="flex flex-col">
+                            <input value={newUser.user_id} onChange={e=>setNewUser(n=>({...n, user_id:e.target.value}))} placeholder="User ID (NIM/NIP)" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                        <div className="flex flex-col">
                             <input value={newUser.email} onChange={e=>setNewUser(n=>({...n, email:e.target.value}))} placeholder="Email" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                        <div className="flex flex-col">
+                            <input value={newUser.phone} onChange={e=>setNewUser(n=>({...n, phone:e.target.value}))} placeholder="No. Telepon" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                         </div>
                         <div className="flex flex-col">
                             <select value={newUser.role} onChange={e=>setNewUser(n=>({...n, role:e.target.value}))} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
@@ -219,6 +290,7 @@ const UserManagement = () => {
                             <select value={newUser.status} onChange={e=>setNewUser(n=>({...n, status:e.target.value}))} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                                 <option value="active">Aktif</option>
                                 <option value="inactive">Tidak Aktif</option>
+                                <option value="suspended">Suspended</option>
                             </select>
                         </div>
                     <button onClick={handleCreate} disabled={creating} className="mt-4 lg:mt-0 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
@@ -275,8 +347,9 @@ const UserManagement = () => {
                         onChange={(e) => setFilterRole(e.target.value)}
                     >
                         <option value="all">Semua Role</option>
-                        <option value="dosen">Dosen</option>
-                        <option value="mahasiswa">Mahasiswa</option>
+                        <option value="student">Mahasiswa</option>
+                        <option value="lecturer">Dosen</option>
+                        <option value="super-admin">Super Admin</option>
                     </select>
                     <select
                         className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
@@ -286,6 +359,7 @@ const UserManagement = () => {
                         <option value="all">Semua Status</option>
                         <option value="active">Aktif</option>
                         <option value="inactive">Tidak Aktif</option>
+                        <option value="suspended">Suspended</option>
                     </select>
                 </div>
             </div>
@@ -295,50 +369,117 @@ const UserManagement = () => {
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8" data-aos="fade-up">
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
-                        <thead className="bg-gray-50 text-gray-600 text-xs uppercase tracking-wide">
+                        <thead className="bg-gradient-to-r from-gray-50 to-gray-100 text-gray-700 text-xs uppercase tracking-wider font-semibold">
                             <tr>
-                                <th className="px-4 py-3 text-left">#</th>
-                                <th className="px-4 py-3 text-left">Pengguna</th>
-                                <th className="px-4 py-3 text-left">Email</th>
-                                <th className="px-4 py-3 text-left">Telepon</th>
-                                <th className="px-4 py-3 text-left">Role</th>
-                                <th className="px-4 py-3 text-left">Status</th>
-                                <th className="px-4 py-3 text-left">Dept/Prodi</th>
-                                <th className="px-4 py-3 text-left">Login Terakhir</th>
-                                <th className="px-4 py-3 text-left">Aksi</th>
+                                <th className="px-4 py-4 text-left">#</th>
+                                <th className="px-4 py-4 text-left">
+                                    <div className="flex items-center gap-2">
+                                        <MdPersonOutline className="w-4 h-4" />
+                                        Pengguna
+                                    </div>
+                                </th>
+                                <th className="px-4 py-4 text-left">
+                                    <div className="flex items-center gap-2">
+                                        <MdSchool className="w-4 h-4" />
+                                        User ID
+                                    </div>
+                                </th>
+                                <th className="px-4 py-4 text-left">
+                                    <div className="flex items-center gap-2">
+                                        <MdEmail className="w-4 h-4" />
+                                        Email
+                                    </div>
+                                </th>
+                                <th className="px-4 py-4 text-left">
+                                    <div className="flex items-center gap-2">
+                                        <MdPhone className="w-4 h-4" />
+                                        Telepon
+                                    </div>
+                                </th>
+                                <th className="px-4 py-4 text-left">Role</th>
+                                <th className="px-4 py-4 text-left">Status</th>
+                                <th className="px-4 py-4 text-left">Dept/Prodi</th>
+                                <th className="px-4 py-4 text-left">
+                                    <div className="flex items-center gap-2">
+                                        <MdDateRange className="w-4 h-4" />
+                                        Login Terakhir
+                                    </div>
+                                </th>
+                                <th className="px-4 py-4 text-left">Aksi</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {loading && (
-                                <tr><td colSpan={9} className="px-4 py-6 text-center text-gray-500">Memuat data...</td></tr>
+                                <tr><td colSpan={10} className="px-4 py-6 text-center text-gray-500">Memuat data...</td></tr>
                             )}
                             {!loading && currentUsers.length === 0 && (
-                                <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-500">Tidak ada data pengguna</td></tr>
+                                <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-500">Tidak ada data pengguna</td></tr>
                             )}
                             {!loading && currentUsers.map((user, idx) => (
                                 <tr key={user.id} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 align-top">{(currentPage - 1) * usersPerPage + idx + 1}</td>
                                     <td className="px-4 py-3 align-top">
                                         <div className="flex items-center gap-3">
-                                            <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover border" />
+                                            <img 
+                                                src={user.avatar} 
+                                                alt={user.name || 'User'} 
+                                                className="w-10 h-10 rounded-full object-cover border border-gray-200" 
+                                                onError={(e) => {
+                                                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name || 'User')}&background=6366f1&color=fff`;
+                                                }}
+                                            />
                                             <div>
                                                 <div className="font-medium text-gray-800">{user.name}</div>
-                                                <div className="text-xs text-gray-500">{user.user_id || '-'}</div>
+                                                <div className="text-xs text-gray-500">
+                                                    {user.gender === 'male' ? 'Laki-laki' : user.gender === 'female' ? 'Perempuan' : '-'}
+                                                </div>
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 align-top text-gray-700">{user.email}</td>
-                                    <td className="px-4 py-3 align-top text-gray-700">{user.phone}</td>
                                     <td className="px-4 py-3 align-top">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getRoleColor(user.role)}`}>{user.role}</span>
+                                        <div className="font-mono text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded border">
+                                            {user.user_id}
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 align-top text-gray-700">
+                                        <div className="max-w-xs truncate" title={user.email}>
+                                            {user.email}
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 align-top text-gray-700">
+                                        <div className="text-sm">
+                                            {user.phone === '-' ? 
+                                                <span className="text-gray-400 italic">Belum diisi</span> : 
+                                                user.phone
+                                            }
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3 align-top">
-                                        <button onClick={() => handleStatusToggle(user)} className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getStatusColor(user.status)} hover:opacity-80`}>
-                                            {user.status === 'active' ? 'Aktif' : 'Tidak Aktif'}
+                                        <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getRoleColor(user.role)}`}>
+                                            {user.role === 'student' ? 'Mahasiswa' : user.role === 'lecturer' ? 'Dosen' : user.role === 'super-admin' ? 'Super Admin' : user.role}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-3 align-top">
+                                        <button onClick={() => handleStatusToggle(user)} className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getStatusColor(user.status)} hover:opacity-80 transition-opacity`}>
+                                            {user.status === 'active' ? 'Aktif' : user.status === 'inactive' ? 'Tidak Aktif' : 'Suspended'}
                                         </button>
                                     </td>
-                                    <td className="px-4 py-3 align-top text-gray-700">{user.department}</td>
-                                    <td className="px-4 py-3 align-top text-gray-600 text-xs">{user.lastLogin}</td>
+                                    <td className="px-4 py-3 align-top text-gray-700">
+                                        <div className="text-sm">
+                                            {user.department === '-' ? 
+                                                <span className="text-gray-400 italic">Belum diisi</span> : 
+                                                user.department
+                                            }
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 align-top text-gray-600 text-xs">
+                                        <div className="text-xs">
+                                            {user.lastLogin === '-' ? 
+                                                <span className="text-gray-400 italic">Belum pernah login</span> : 
+                                                user.lastLogin
+                                            }
+                                        </div>
+                                    </td>
                                     <td className="px-4 py-3 align-top">
                                         <div className="relative">
                                             <button onClick={() => handleDropdownToggle(user.id)} className="p-2 hover:bg-gray-100 rounded-lg">

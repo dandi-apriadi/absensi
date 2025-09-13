@@ -117,33 +117,50 @@ export const getAllUsers = async (req, res) => {
 
         if (search) {
             whereClause[db.Sequelize.Op.or] = [
-                { full_name: { [db.Sequelize.Op.like]: `%${search}%` } },
+                { fullname: { [db.Sequelize.Op.like]: `%${search}%` } },
                 { email: { [db.Sequelize.Op.like]: `%${search}%` } },
                 { user_id: { [db.Sequelize.Op.like]: `%${search}%` } }
             ];
         }        // Calculate offset
         const offset = (parseInt(page) - 1) * parseInt(limit);
 
+        // Map sortBy to correct column names
+        const sortByMapping = {
+            'full_name': 'fullname',
+            'fullname': 'fullname',
+            'created_at': 'created_at',
+            'user_id': 'user_id',
+            'email': 'email',
+            'role': 'role',
+            'status': 'status'
+        };
+        
+        const mappedSortBy = sortByMapping[sortBy] || 'created_at';
+
         // Get users with pagination
         const { count, rows: users } = await Users.findAndCountAll({
             where: whereClause,
             attributes: { exclude: ['password'] },
-            order: [[sortBy, sortOrder.toUpperCase()]],
+            order: [[mappedSortBy, sortOrder.toUpperCase()]],
             limit: parseInt(limit),
             offset: offset
         });
 
+        console.log('Raw users from database:', JSON.stringify(users, null, 2)); // Debug log
+
         // Format users with role-specific data (fallback jika method tidak tersedia)
         const formattedUsers = users.map(user => {
+            console.log('Processing user in controller:', user.toJSON()); // Debug log
             if (typeof user.getRoleSpecificData === 'function') {
                 return user.getRoleSpecificData();
             }
             const base = user.toJSON();
+            console.log('Base user data:', base); // Debug log
             return {
                 id: base.id,
                 user_id: base.user_id,
                 email: base.email,
-                full_name: base.full_name,
+                full_name: base.fullname, // Use fullname from database
                 role: base.role,
                 status: base.status,
                 phone: base.phone,
@@ -559,7 +576,7 @@ export const updateUserStatus = async (req, res) => {
                 user: {
                     id: user.id,
                     user_id: user.user_id,
-                    full_name: user.full_name,
+                    full_name: user.fullname, // Use fullname from database
                     status: user.status
                 }
             }

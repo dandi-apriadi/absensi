@@ -15,14 +15,14 @@ import {
   MdFileUpload,
   MdDataset,
   MdVerified,
-  MdPersonPin
+  MdPersonPin,
+  MdSchool
 } from "react-icons/md";
 
 // Import components (cleaned up - removed unused components)
 import SuperAdminDashboard from "../views/super-admin/dashboard";
 import UserManagement from "../views/super-admin/user-management";
 import AddUser from "../views/super-admin/user-management/components/AddUser";
-import UsersList from "../views/super-admin/user-management/components/UsersList";
 import FaceDatasetManagement from "../views/super-admin/face-dataset";
 import UploadDataset from "../views/super-admin/face-dataset/components/UploadDataset";
 import ManageDataset from "../views/super-admin/face-dataset/components/ManageDataset";
@@ -34,6 +34,8 @@ import RoomAccess from "../views/super-admin/room-access";
 import AdminProfile from "../views/super-admin/profile/AdminProfile";
 import AddClass from "../views/super-admin/courses/AddClass";
 import ManageClassUsers from "../views/super-admin/courses/ManageClassUsers";
+import AddCourse from "../views/super-admin/courses/AddCourse";
+import ClassList from "../views/super-admin/courses/ClassList";
 
 const routes = [
   {
@@ -57,15 +59,6 @@ const routes = [
     path: "add-user",
     icon: <MdPersonAdd className="h-6 w-6 ml-10" />,
     component: <AddUser />,
-    secondary: true,
-  },
-  {
-    name: "Daftar Pengguna",
-    layout: "/admin",
-    parentPath: "user-management",
-    path: "users-list",
-    icon: <MdPeople className="h-6 w-6 ml-10" />,
-    component: <UsersList />,
     secondary: true,
   },
   {
@@ -139,7 +132,7 @@ const routes = [
     layout: "/admin",
     path: "class-management",
     icon: <MdPeople className="h-6 w-6" />,
-    component: <AddClass />, // default to add class page
+    component: <ClassList />, // Updated to use ClassList component
   },
   {
     name: "Tambah Kelas",
@@ -157,6 +150,15 @@ const routes = [
     path: "manage-class-users",
     icon: <MdManageAccounts className="h-6 w-6 ml-10" />,
     component: <ManageClassUsers />,
+    secondary: true,
+  },
+  {
+    name: "Tambah Mata Kuliah",
+    layout: "/admin",
+    parentPath: "class-management",
+    path: "add-course",
+    icon: <MdSchool className="h-6 w-6 ml-10" />,
+    component: <AddCourse />,
     secondary: true,
   },
   {

@@ -39,7 +39,12 @@ const ManageClassUsers = () => {
       setClasses(all);
       if (all[0]?.id) setClassId(String(all[0].id));
     } catch (e) {
-      setMessage({ type: "error", text: "Gagal memuat daftar kelas" });
+      console.error('Failed to fetch classes:', e);
+      if (e.response?.status === 403) {
+        setMessage({ type: "error", text: "Akses ditolak. Pastikan Anda sudah login dengan benar." });
+      } else {
+        setMessage({ type: "error", text: "Gagal memuat daftar kelas" });
+      }
     } finally {
       setLoading(false);
     }
@@ -52,19 +57,41 @@ const ManageClassUsers = () => {
       const res = await axios.get(`${API_BASE}/api/courses/classes/${id}/enrollments`, { withCredentials: true, params: { limit: 500 } });
       setEnrollments(res.data?.data?.enrollments || []);
     } catch (e) {
-      setMessage({ type: "error", text: "Gagal memuat daftar anggota kelas" });
+      console.error('Failed to fetch enrollments:', e);
+      if (e.response?.status === 403) {
+        setMessage({ type: "error", text: "Akses ditolak. Pastikan Anda sudah login dengan benar." });
+      } else {
+        setMessage({ type: "error", text: "Gagal memuat daftar anggota kelas" });
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const fetchStudents = async () => {
-    // Placeholder: until admin users API exists, mock a small list
-    setStudents([
-      { id: 101, user_id: "2021010101", full_name: "Ahmad Fauzi" },
-      { id: 102, user_id: "2022010201", full_name: "Sarah Wijaya" },
-      { id: 103, user_id: "2023010301", full_name: "Dimas Prasetyo" },
-    ]);
+    try {
+      setLoading(true);
+      const res = await axios.get(`${API_BASE}/api/admin/users`, { 
+        withCredentials: true, 
+        params: { 
+          role: 'student',
+          limit: 500,
+          sortBy: 'full_name',
+          sortOrder: 'ASC'
+        } 
+      });
+      setStudents(res.data?.data?.users || []);
+    } catch (e) {
+      console.error('Failed to fetch students:', e);
+      if (e.response?.status === 403) {
+        setMessage({ type: "error", text: "Akses ditolak. Pastikan Anda sudah login sebagai super admin." });
+      } else {
+        setMessage({ type: "error", text: "Gagal memuat daftar mahasiswa" });
+      }
+      setStudents([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -78,14 +105,42 @@ const ManageClassUsers = () => {
   }, []);
 
   useEffect(() => {
-    if (classId) fetchEnrollments(classId);
+    if (classId) {
+      fetchEnrollments(classId);
+    } else {
+      setEnrollments([]);
+    }
   }, [classId]);
 
+  // Clear message after 5 seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => {
+        setMessage(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
   const visibleStudents = useMemo(() => {
-    if (!search) return students;
-    const s = search.toLowerCase();
-    return students.filter((u) => `${u.full_name} ${u.user_id}`.toLowerCase().includes(s));
-  }, [students, search]);
+    if (!search && !classId) return students;
+    
+    let filtered = students;
+    
+    // Filter by search term
+    if (search) {
+      const s = search.toLowerCase();
+      filtered = filtered.filter((u) => `${u.full_name} ${u.user_id}`.toLowerCase().includes(s));
+    }
+    
+    // Filter out already enrolled students
+    if (classId && enrollments.length > 0) {
+      const enrolledStudentIds = enrollments.map(e => e.student_id);
+      filtered = filtered.filter(student => !enrolledStudentIds.includes(student.id));
+    }
+    
+    return filtered;
+  }, [students, search, classId, enrollments]);
 
   const enroll = async (student_id) => {
     if (!classId) return;
@@ -100,6 +155,30 @@ const ManageClassUsers = () => {
       fetchEnrollments(classId);
     } catch (e) {
       const text = e?.response?.data?.message || "Gagal menambahkan mahasiswa";
+      setMessage({ type: "error", text });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeEnrollment = async (enrollmentId, studentName) => {
+    if (!enrollmentId) return;
+    
+    // Show confirmation dialog
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus ${studentName} dari kelas ini?`)) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await axios.delete(
+        `${API_BASE}/api/courses/enrollments/${enrollmentId}`,
+        { withCredentials: true }
+      );
+      setMessage({ type: "success", text: "Mahasiswa berhasil dihapus dari kelas" });
+      fetchEnrollments(classId);
+    } catch (e) {
+      const text = e?.response?.data?.message || "Gagal menghapus mahasiswa";
       setMessage({ type: "error", text });
     } finally {
       setLoading(false);
@@ -235,10 +314,22 @@ const ManageClassUsers = () => {
                   </button>
                 </div>
               ))}
-              {visibleStudents.length === 0 && (
+              {visibleStudents.length === 0 && !loading && (
                 <div className="text-center py-8">
                   <MdPeople className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500">Tidak ada mahasiswa yang sesuai</p>
+                  {students.length === 0 ? (
+                    <p className="text-gray-500">Tidak ada mahasiswa tersedia</p>
+                  ) : search ? (
+                    <p className="text-gray-500">Tidak ada mahasiswa yang sesuai dengan pencarian</p>
+                  ) : (
+                    <p className="text-gray-500">Semua mahasiswa sudah terdaftar di kelas ini</p>
+                  )}
+                </div>
+              )}
+              {loading && (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
+                  <p className="text-gray-500">Memuat data...</p>
                 </div>
               )}
             </div>
@@ -281,19 +372,26 @@ const ManageClassUsers = () => {
                     </div>
                   </div>
                   <button 
-                    disabled 
-                    className="px-3 py-2 bg-gray-100 text-gray-400 rounded-xl text-sm font-medium cursor-not-allowed flex items-center gap-2"
+                    onClick={() => removeEnrollment(e.id, e.student?.full_name || 'mahasiswa ini')}
+                    disabled={loading}
+                    className="px-3 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl text-sm font-medium transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105 disabled:transform-none flex items-center gap-2"
                   >
                     <MdDelete className="w-4 h-4" /> 
                     Hapus
                   </button>
                 </div>
               ))}
-              {enrollments.length === 0 && (
+              {enrollments.length === 0 && !loading && (
                 <div className="text-center py-8">
                   <MdGroup className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500">Belum ada mahasiswa terdaftar</p>
                   <p className="text-xs text-gray-400 mt-1">Mulai tambahkan mahasiswa dari panel sebelah kiri</p>
+                </div>
+              )}
+              {loading && enrollments.length === 0 && (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3"></div>
+                  <p className="text-gray-500">Memuat data pendaftaran...</p>
                 </div>
               )}
             </div>
