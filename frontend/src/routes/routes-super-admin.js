@@ -27,7 +27,6 @@ import ManageDataset from "../views/super-admin/face-dataset/components/ManageDa
 import VerifyDataset from "../views/super-admin/face-dataset/components/VerifyDataset";
 import AttendanceManagement from "../views/super-admin/attendance";
 import AttendanceHistory from "../views/super-admin/attendance/components/AttendanceHistory";
-import ManualVerification from "../views/super-admin/attendance/components/ManualVerification";
 import RoomAccess from "../views/super-admin/room-access";
 import ClassAccessDetail from "../views/super-admin/room-access/ClassAccessDetail";
 import AddClass from "../views/super-admin/courses/AddClass";
@@ -106,15 +105,6 @@ const routes = [
     path: "attendance-history",
     icon: <MdHistory className="h-6 w-6 ml-10" />,
     component: <AttendanceHistory />,
-    secondary: true,
-  },
-  {
-    name: "Verifikasi Manual",
-    layout: "/admin",
-    parentPath: "attendance",
-    path: "manual-verification",
-    icon: <MdVerified className="h-6 w-6 ml-10" />,
-    component: <ManualVerification />,
     secondary: true,
   },
   {
