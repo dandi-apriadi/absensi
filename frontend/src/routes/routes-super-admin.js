@@ -29,6 +29,7 @@ import AttendanceManagement from "../views/super-admin/attendance";
 import AttendanceHistory from "../views/super-admin/attendance/components/AttendanceHistory";
 import ManualVerification from "../views/super-admin/attendance/components/ManualVerification";
 import RoomAccess from "../views/super-admin/room-access";
+import ClassAccessDetail from "../views/super-admin/room-access/ClassAccessDetail";
 import AddClass from "../views/super-admin/courses/AddClass";
 import ManageClassUsers from "../views/super-admin/courses/ManageClassUsers";
 import ClassList from "../views/super-admin/courses/ClassList";
@@ -122,6 +123,15 @@ const routes = [
     path: "room-access",
     icon: <MdMeetingRoom className="h-6 w-6" />,
     component: <RoomAccess />,
+  },
+  {
+    name: "Detail Akses Kelas",
+    layout: "/admin",
+    parentPath: "room-access",
+    path: "room-access/:classId/detail",
+    component: <ClassAccessDetail />,
+    secondary: true,
+    hidden: true, // Don't show in sidebar
   },
   {
     name: "Manajemen Kelas",
