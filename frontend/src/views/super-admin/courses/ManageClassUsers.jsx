@@ -76,7 +76,7 @@ const ManageClassUsers = () => {
         params: { 
           role: 'student',
           limit: 500,
-          sortBy: 'full_name',
+          sortBy: 'fullname', // Changed from 'full_name' to 'fullname'
           sortOrder: 'ASC'
         } 
       });

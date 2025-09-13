@@ -354,6 +354,136 @@ export const createCourseClass = async (req, res) => {
 };
 
 /**
+ * Update course class (Super Admin or Lecturer)
+ */
+export const updateCourseClass = async (req, res) => {
+    try {
+        // Allow super-admin, admin, and lecturer roles to update classes
+        const userRole = req.role || req.session?.role;
+        const allowedRoles = ['super-admin', 'admin', 'lecturer'];
+        
+        if (!userRole || !allowedRoles.includes(userRole)) {
+            return res.status(403).json({
+                success: false,
+                message: `Akses ditolak. Role '${userRole}' tidak diizinkan untuk mengubah kelas.`
+            });
+        }
+
+        const { id } = req.params;
+        const {
+            class_name,
+            lecturer_name,
+            academic_year,
+            semester_period,
+            max_students,
+            status,
+            schedule
+        } = req.body;
+
+        // Find the class
+        const courseClass = await CourseClasses.findByPk(id);
+        if (!courseClass) {
+            return res.status(404).json({
+                success: false,
+                message: "Kelas tidak ditemukan"
+            });
+        }
+
+        // Update the class
+        const updateData = {};
+        if (class_name !== undefined) updateData.class_name = class_name;
+        if (lecturer_name !== undefined) updateData.lecturer_name = lecturer_name;
+        if (academic_year !== undefined) updateData.academic_year = academic_year;
+        if (semester_period !== undefined) updateData.semester_period = semester_period;
+        if (max_students !== undefined) updateData.max_students = max_students;
+        if (status !== undefined) updateData.status = status;
+        if (schedule !== undefined) updateData.schedule = schedule;
+
+        await courseClass.update(updateData);
+
+        res.status(200).json({
+            success: true,
+            message: "Kelas berhasil diperbarui",
+            data: courseClass
+        });
+    } catch (error) {
+        console.error('Update course class error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Gagal memperbarui kelas"
+        });
+    }
+};
+
+/**
+ * Delete course class (Super Admin only)
+ */
+export const deleteCourseClass = async (req, res) => {
+    try {
+        // Debug session and user info
+        console.log('=== DELETE CLASS DEBUG ===');
+        console.log('Session exists:', !!req.session);
+        console.log('Session user_id:', req.session?.user_id);
+        console.log('Session role:', req.session?.role);
+        console.log('Middleware user_id:', req.user_id);
+        console.log('Middleware role:', req.role);
+        console.log('Request headers:', req.headers);
+        console.log('=========================');
+
+        // Only super-admin can delete classes
+        const userRole = req.role || req.session?.role;
+        
+        if (userRole !== 'super-admin') {
+            console.log('Access denied for role:', userRole);
+            return res.status(403).json({
+                success: false,
+                message: "Akses ditolak. Hanya super admin yang dapat menghapus kelas."
+            });
+        }
+
+        const { id } = req.params;
+
+        // Find the class
+        const courseClass = await CourseClasses.findByPk(id);
+        if (!courseClass) {
+            return res.status(404).json({
+                success: false,
+                message: "Kelas tidak ditemukan"
+            });
+        }
+
+        // Check if there are enrolled students
+        const enrollmentCount = await StudentEnrollments.count({
+            where: { 
+                class_id: id,
+                status: 'enrolled' 
+            }
+        });
+
+        if (enrollmentCount > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Tidak dapat menghapus kelas yang masih memiliki ${enrollmentCount} mahasiswa terdaftar. Hapus semua mahasiswa terlebih dahulu.`
+            });
+        }
+
+        // Delete the class
+        await courseClass.destroy();
+
+        res.status(200).json({
+            success: true,
+            message: "Kelas berhasil dihapus"
+        });
+    } catch (error) {
+        console.error('Delete course class error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Gagal menghapus kelas"
+        });
+    }
+};
+
+/**
  * Get class enrollments
  */
 export const getClassEnrollments = async (req, res) => {

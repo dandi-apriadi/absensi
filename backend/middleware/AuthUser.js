@@ -3,9 +3,25 @@ import { User } from "../models/userModel.js";
 // Middleware to verify if the user is authenticated
 export const verifyUser = async (req, res, next) => {
     // Check if user is logged in (session validation)
-    console.log(req.session.user_id);
+    console.log('=== VERIFY USER MIDDLEWARE ===');
+    console.log('Request method:', req.method);
+    console.log('Request URL:', req.url);
+    console.log('Session exists:', !!req.session);
+    console.log('Session ID:', req.session?.id);
+    console.log('Session user_id:', req.session?.user_id);
+    console.log('Session role:', req.session?.role);
+    console.log('Full session data:', req.session);
+    console.log('Request headers:', req.headers);
+    console.log('Cookies:', req.headers.cookie);
+    console.log('==============================');
+    
     if (!req.session.user_id) {
-        return res.status(401).json({ msg: "Mohon login ke Akun Anda!:" + req.session });
+        console.log('❌ No user_id in session - returning 401');
+        return res.status(401).json({ 
+            msg: "Mohon login ke Akun Anda!", 
+            sessionData: req.session,
+            hasSession: !!req.session 
+        });
     }
 
     try {
@@ -15,8 +31,12 @@ export const verifyUser = async (req, res, next) => {
             }
         });
 
-        if (!user) return res.status(404).json({ msg: "User tidak ditemukan" });
+        if (!user) {
+            console.log('❌ User not found in database - returning 404');
+            return res.status(404).json({ msg: "User tidak ditemukan" });
+        }
 
+        console.log('✅ User verified:', { user_id: user.user_id, role: user.role });
         req.user_id = user.user_id;
         req.role = user.role;
 

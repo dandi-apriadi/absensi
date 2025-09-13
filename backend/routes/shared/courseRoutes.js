@@ -6,6 +6,8 @@ import {
     deleteCourse,
     getCourseClasses,
     createCourseClass,
+    updateCourseClass,
+    deleteCourseClass,
     getClassEnrollments,
     enrollStudent,
     updateEnrollmentStatus,
@@ -31,6 +33,8 @@ router.delete('/:id', verifyUser, deleteCourse);
 router.get('/classes/all-with-stats', getAllClassesWithStats); // New endpoint for all classes with stats
 router.get('/:course_id/classes', getCourseClasses);
 router.post('/classes', verifyUser, createCourseClass);
+router.put('/classes/:id', verifyUser, updateCourseClass); // Update class
+router.delete('/classes/:id', verifyUser, deleteCourseClass); // Delete class
 router.post('/classes/demo', createCourseClassDemo); // Demo endpoint without auth for testing
 
 // Enrollments
