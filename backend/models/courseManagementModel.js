@@ -81,9 +81,9 @@ const CourseClasses = db.define('course_classes', {
         comment: 'Reference to courses table (manual relationship)'
     },
     lecturer_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         allowNull: true,
-        comment: 'Reference to users table where role = lecturer (manual relationship)'
+        comment: 'Reference to users table user_id field where role = lecturer (manual relationship)'
     },
     lecturer_name: {
         type: DataTypes.STRING(100),
@@ -142,9 +142,9 @@ const StudentEnrollments = db.define('student_enrollments', {
         primaryKey: true,
         autoIncrement: true
     },    student_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         allowNull: false,
-        comment: 'Reference to users table where role = student (manual relationship)'
+        comment: 'Reference to users table user_id field where role = student (manual relationship)'
     },
     class_id: {
         type: DataTypes.INTEGER,

@@ -219,7 +219,7 @@ const ManageClassUsers = () => {
     if (classId && enrollments.length > 0) {
       const enrolledStudentIds = enrollments.map(e => e.student_id);
       console.log('Enrolled student IDs:', enrolledStudentIds);
-      filtered = filtered.filter(student => !enrolledStudentIds.includes(student.id));
+      filtered = filtered.filter(student => !enrolledStudentIds.includes(student.user_id));
       console.log('After enrollment filter:', filtered.length);
     }
     
@@ -227,21 +227,37 @@ const ManageClassUsers = () => {
     return filtered;
   }, [students, search, classId, enrollments]);
 
-  const enroll = async (student_id) => {
-    if (!classId || enrollingId) return;
+  const enroll = async (student_user_id) => {
+    console.log('=== ENROLL FUNCTION CALLED ===');
+    console.log('student_user_id:', student_user_id);
+    console.log('classId:', classId);
+    console.log('enrollingId:', enrollingId);
+    
+    if (!classId || enrollingId) {
+      console.log('Aborting: missing classId or already enrolling');
+      return;
+    }
     
     // Prevent duplicate enroll if already present locally
-    if (enrollments.some(e => e.student_id === student_id)) {
+    if (enrollments.some(e => e.student_id === student_user_id)) {
+      console.log('Aborting: student already enrolled locally');
       setMessage({ type: 'error', text: 'Mahasiswa sudah terdaftar (lokal).' });
       return;
     }
     
-    setEnrollingId(student_id);
+    setEnrollingId(student_user_id);
     try {
-      const payload = { class_id: Number(classId), student_id };
-      const studentRef = students.find(s => s.id === student_id);
+      const payload = { class_id: Number(classId), student_id: student_user_id };
+      const studentRef = students.find(s => s.user_id === student_user_id);
       
-      console.log('Enrolling student:', payload);
+      console.log('Enrolling student with payload:', payload);
+      console.log('Student reference found:', studentRef);
+      console.log('Sending request to:', `${API_BASE}/api/courses/enrollments`);
+      
+      // Validate payload before sending
+      if (!payload.class_id || !payload.student_id) {
+        throw new Error(`Payload validation failed: class_id=${payload.class_id}, student_id=${payload.student_id}`);
+      }
       
       // Optimistic update
       setEnrollments(prev => ([
@@ -249,7 +265,7 @@ const ManageClassUsers = () => {
         {
           id: `temp-${Date.now()}`,
           class_id: payload.class_id,
-          student_id,
+          student_id: student_user_id,
           enrollment_date: new Date().toISOString(),
           status: 'enrolled',
           student: studentRef ? {
@@ -457,11 +473,11 @@ const ManageClassUsers = () => {
                     </div>
                   </div>
                   <button 
-                    disabled={loading || enrollingId === u.id || !classId} 
-                    onClick={() => enroll(u.id)} 
-                    className={`px-4 py-2 ${enrollingId === u.id ? 'from-gray-400 to-gray-500 cursor-wait' : !classId ? 'from-gray-300 to-gray-400 cursor-not-allowed' : 'from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'} bg-gradient-to-r disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl text-sm font-medium transition-all duration-300 shadow-md hover:shadow-lg transform ${enrollingId === u.id || !classId ? '' : 'hover:scale-105'} disabled:transform-none`}
+                    disabled={loading || enrollingId === u.user_id || !classId} 
+                    onClick={() => enroll(u.user_id)} 
+                    className={`px-4 py-2 ${enrollingId === u.user_id ? 'from-gray-400 to-gray-500 cursor-wait' : !classId ? 'from-gray-300 to-gray-400 cursor-not-allowed' : 'from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'} bg-gradient-to-r disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl text-sm font-medium transition-all duration-300 shadow-md hover:shadow-lg transform ${enrollingId === u.user_id || !classId ? '' : 'hover:scale-105'} disabled:transform-none`}
                   >
-                    {enrollingId === u.id ? 'Memproses...' : !classId ? 'Pilih Kelas' : 'Tambah'}
+                    {enrollingId === u.user_id ? 'Memproses...' : !classId ? 'Pilih Kelas' : 'Tambah'}
                   </button>
                 </div>
                 );

@@ -77,9 +77,9 @@ const AttendanceSessions = db.define('attendance_sessions', {
         type: DataTypes.TEXT,
         allowNull: true
     },    created_by: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         allowNull: true,
-        comment: 'Reference to users table where role = lecturer (manual relationship)'
+        comment: 'Reference to users table user_id field (manual relationship)'
     }
 }, {
     timestamps: true,
@@ -113,9 +113,9 @@ const StudentAttendances = db.define('student_attendances', {
         comment: 'Reference to attendance_sessions table (manual relationship)'
     },
     student_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         allowNull: false,
-        comment: 'Reference to users table where role = student (manual relationship)'
+        comment: 'Reference to users table user_id field where role = student (manual relationship)'
     },
     status: {
         type: DataTypes.ENUM('present', 'absent', 'late', 'excused', 'sick'),
@@ -186,9 +186,9 @@ const FaceDatasets = db.define('face_datasets', {
         autoIncrement: true
     },
     user_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         allowNull: false,
-        comment: 'Reference to users table (manual relationship)'
+        comment: 'Reference to users table user_id field (manual relationship)'
     },
     image_path: {
         type: DataTypes.STRING(255),
@@ -222,9 +222,9 @@ const FaceDatasets = db.define('face_datasets', {
         defaultValue: 'pending'
     },
     verified_by: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         allowNull: true,
-        comment: 'Reference to users table - who verified the face dataset (manual relationship)'
+        comment: 'Reference to users table user_id field - who verified the face dataset (manual relationship)'
     },
     verified_at: {
         type: DataTypes.DATE,
@@ -266,9 +266,9 @@ const FaceRecognitionLogs = db.define('face_recognition_logs', {
         comment: 'Reference to attendance_sessions table (manual relationship)'
     },
     recognized_user_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         allowNull: true,
-        comment: 'Reference to users table - recognized user (manual relationship)'
+        comment: 'Reference to users table user_id field - recognized user (manual relationship)'
     },
     confidence_score: {
         type: DataTypes.DECIMAL(5, 4),

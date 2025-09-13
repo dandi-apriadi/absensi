@@ -13,14 +13,14 @@ const Notifications = db.define('notifications', {
         autoIncrement: true
     },
     recipient_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         allowNull: false,
-        comment: 'Reference to users table (manual relationship)'
+        comment: 'Reference to users table user_id field (manual relationship)'
     },
     sender_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         allowNull: true,
-        comment: 'Reference to users table - sender (manual relationship)'
+        comment: 'Reference to users table user_id field - sender (manual relationship)'
     },
     type: {
         type: DataTypes.ENUM(
@@ -106,9 +106,9 @@ const DoorAccessLogs = db.define('door_access_logs', {
         autoIncrement: true
     },
     user_id: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         allowNull: true,
-        comment: 'Reference to users table (manual relationship)'
+        comment: 'Reference to users table user_id field (manual relationship)'
     },
     access_type: {
         type: DataTypes.ENUM('face_recognition', 'keycard', 'manual_override', 'emergency'),
