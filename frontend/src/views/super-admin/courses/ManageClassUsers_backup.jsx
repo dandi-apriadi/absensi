@@ -54,14 +54,29 @@ const ManageClassUsers = () => {
       });
       
       console.log('Classes API response:', res.data);
-      const rawClasses = res.data?.data?.classes || [];
-      console.log('Raw classes data:', rawClasses);
-      setClasses(rawClasses);
+      const classList = res.data?.data?.classes || [];
+      console.log('Fetched classes:', classList);
+      
+      // Filter out null entries and ensure each item has required fields
+      const validClasses = classList.filter(cls => cls && cls.id && cls.course);
+      console.log('Valid classes after filtering:', validClasses);
+      
+      setClasses(validClasses);
+      if (validClasses.length > 0 && validClasses[0]?.id) {
+        console.log('Setting default class ID:', validClasses[0].id);
+        setClassId(String(validClasses[0].id));
+      }
+      
+      if (validClasses.length === 0) {
+        console.log('No valid classes found');
+        setMessage({ type: "info", text: "Tidak ada kelas yang tersedia di database." });
+      }
     } catch (e) {
       console.error('Failed to fetch classes:', e);
       console.error('Error response:', e.response?.data);
       console.error('Error status:', e.response?.status);
       console.error('Error message:', e.message);
+      console.error('Full error object:', e);
       if (e.response?.status === 401) {
         setMessage({ type: "error", text: "Sesi berakhir. Silakan login kembali." });
       } else if (e.response?.status === 403) {
@@ -381,7 +396,7 @@ const ManageClassUsers = () => {
       const backendMsg = e?.response?.data?.message;
       let friendly = backendMsg || 'Gagal menghapus mahasiswa';
       if (e.response?.status === 401) friendly = 'Sesi berakhir. Silakan login kembali.';
-      if (e.response?.status === 403) friendly = 'Tidak memiliki izin untuk menghapus mahasiswa.';
+      if (e.response?.status === 403) friendly = 'Tidak memiliki izin untuk menghapus.';
       setMessage({ type: 'error', text: friendly });
     } finally {
       setRemovingId(null);
@@ -392,7 +407,7 @@ const ManageClassUsers = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header Section */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="p-2 bg-blue-600 rounded-lg">
@@ -420,7 +435,7 @@ const ManageClassUsers = () => {
         </div>
       </div>
 
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Message Display */}
         {message && (
           <div className={`mb-6 p-4 rounded-lg border ${
@@ -440,7 +455,7 @@ const ManageClassUsers = () => {
         )}
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-6 mb-8" data-aos="fade-up">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8" data-aos="fade-up">
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center">
               <div className="p-2 bg-blue-100 rounded-lg">
@@ -482,28 +497,6 @@ const ManageClassUsers = () => {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Tersedia</p>
                 <p className="text-2xl font-bold text-gray-900">{classId ? visibleStudents.length : '-'}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-indigo-100 rounded-lg">
-                <MdSchool className="w-6 h-6 text-indigo-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Program Studi</p>
-                <p className="text-2xl font-bold text-gray-900">{[...new Set(classes.map(c => c.course?.program_study).filter(Boolean))].length}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-rose-100 rounded-lg">
-                <MdAutoAwesome className="w-6 h-6 text-rose-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Pendaftar</p>
-                <p className="text-2xl font-bold text-gray-900">{allEnrollments.filter(e => e.status === 'enrolled' || e.status === 'active').length}</p>
               </div>
             </div>
           </div>
@@ -563,204 +556,249 @@ const ManageClassUsers = () => {
             )}
           </div>
         </div>
-
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-          {/* Add Students Section - Takes more space on larger screens */}
-          <div className="lg:col-span-3">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200" data-aos="fade-up" data-aos-delay="200">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-green-100 rounded-lg">
-                      <MdPersonAdd className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">Tambah Mahasiswa</h3>
-                      <p className="text-sm text-gray-600">Pilih mahasiswa untuk ditambahkan ke kelas</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="relative">
-                      <MdSearch className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
-                      <input 
-                        value={search} 
-                        onChange={(e) => setSearch(e.target.value)} 
-                        className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" 
-                        placeholder="Cari nama/NIM" 
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="p-6">
-                {!classId && (
-                  <div className="text-center py-12">
-                    <MdClass className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Pilih Kelas Terlebih Dahulu</h3>
-                    <p className="text-gray-600">Silakan pilih kelas dari dropdown di atas untuk mengelola mahasiswa</p>
-                  </div>
-                )}
-                
-                {classId && (
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {visibleStudents.map((u) => {
-                      const userKey = u.id ?? `student-${u.user_id}`;
-                      return (
-                        <div key={userKey} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-                              <span className="text-white font-medium text-sm">
-                                {u.full_name?.charAt(0)?.toUpperCase() || 'M'}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-900">{u.full_name}</p>
-                              <p className="text-sm text-gray-600">
-                                {u.user_id} • {u.program_study || 'Program Studi tidak diketahui'}
-                              </p>
-                            </div>
-                          </div>
-                          <button 
-                            disabled={loading || enrollingId === u.user_id || !classId} 
-                            onClick={() => enroll(u.user_id)} 
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                              enrollingId === u.user_id 
-                                ? 'bg-gray-100 text-gray-400 cursor-wait' 
-                                : !classId 
-                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                                  : 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-                            }`}
-                          >
-                            {enrollingId === u.user_id ? 'Memproses...' : !classId ? 'Pilih Kelas' : 'Tambah'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                    
-                    {visibleStudents.length === 0 && !loading && (
-                      <div className="text-center py-12">
-                        <MdPeople className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                        {students.length === 0 ? (
-                          <div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">Tidak Ada Mahasiswa</h3>
-                            <p className="text-gray-600">Belum ada data mahasiswa tersedia</p>
-                          </div>
-                        ) : search ? (
-                          <div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">Tidak Ditemukan</h3>
-                            <p className="text-gray-600">Tidak ada mahasiswa yang sesuai dengan pencarian</p>
-                          </div>
-                        ) : (
-                          <div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">Tidak Ada Mahasiswa Tersedia</h3>
-                            <p className="text-gray-600 mb-1">Mahasiswa sudah terdaftar di kelas ini atau di kelas lain</p>
-                            <p className="text-sm text-gray-500">(Satu mahasiswa hanya dapat terdaftar di satu kelas aktif)</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
-                    {loading && (
-                      <div className="text-center py-12">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                        <p className="text-gray-600">Memuat data...</p>
-                      </div>
-                    )}
-                  </div>
-                )}
+              <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
+                <MdSchool className="w-4 h-4" />
+                Semua Program Studi
               </div>
             </div>
           </div>
+          <p className="text-gray-600 max-w-2xl mx-auto leading-relaxed">
+            Kelola pendaftaran mahasiswa ke dalam kelas dari seluruh Program Studi dengan mudah dan efisien.
+          </p>
+        </div>
 
-          {/* Enrolled Students Section */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200" data-aos="fade-up" data-aos-delay="300">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-purple-100 rounded-lg">
-                      <MdGroup className="w-5 h-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">Mahasiswa Terdaftar</h3>
-                      <p className="text-sm text-gray-600">{enrollments.length} mahasiswa</p>
-                    </div>
-                  </div>
-                </div>
+        {/* Alert Messages */}
+        {message && (
+          <div 
+            className={`p-4 rounded-2xl backdrop-blur-xl border shadow-lg ${
+              message.type === 'success' 
+                ? 'bg-green-50/80 border-green-200 text-green-800' 
+                : 'bg-red-50/80 border-red-200 text-red-800'
+            }`}
+            data-aos="fade-up"
+          >
+            <div className="flex items-center gap-3">
+              {message.type === 'success' ? (
+                <MdCheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+              ) : (
+                <MdWarning className="w-5 h-5 text-red-600 flex-shrink-0" />
+              )}
+              <p className="font-medium">{message.text}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Class Selection Card */}
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/20 p-8" data-aos="fade-up" data-aos-delay="100">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
+                <MdClass className="w-6 h-6 text-white" />
               </div>
-              
-              <div className="p-6">
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {enrollments.map((e) => {
-                    const enrollmentKey = e.id ?? `enroll-${e.class_id}-${e.student_id}`;
+              <h2 className="text-xl font-bold text-gray-800">Pilih Kelas</h2>
+            </div>
+            <button 
+              onClick={() => classId && fetchEnrollments(classId)} 
+              className="px-4 py-2 bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white rounded-2xl flex items-center gap-2 font-medium transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+              disabled={loading}
+            >
+              <MdRefresh className="w-5 h-5" /> 
+              Refresh
+            </button>
+          </div>
+          
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-600 uppercase tracking-wide">
+              Kelas Tersedia (Semua Program Studi)
+            </label>
+            <select 
+              className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 bg-white/50 backdrop-blur-sm text-sm"
+              value={classId} 
+              onChange={(e) => setClassId(e.target.value)}
+              disabled={classes.length === 0}
+            >
+              {classes.length === 0 ? (
+                <option value="">Tidak ada kelas tersedia</option>
+              ) : (
+                <>
+                  <option value="">Pilih kelas...</option>
+                  {classes.map((k) => {
+                    const optionKey = k.id ?? `${k.course_id || k.course?.id || 'c'}-${k.class_name}`;
                     return (
-                      <div key={enrollmentKey} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
-                            <span className="text-white font-medium text-sm">
-                              {e.student?.full_name?.charAt(0)?.toUpperCase() || 'M'}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900">{e.student?.full_name || '-'}</p>
-                            <div className="flex items-center space-x-2 text-sm text-gray-600">
-                              <span>{e.student?.user_id || ''}</span>
-                              {e.student?.program_study && (
-                                <>
-                                  <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
-                                  <span>{e.student.program_study}</span>
-                                </>
-                              )}
-                              <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                e.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                {e.status}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <button 
-                          onClick={() => removeEnrollment(e.id, e.student?.full_name || 'mahasiswa ini')}
-                          disabled={loading || removingId === e.id}
-                          className="px-3 py-1 bg-red-100 text-red-700 rounded-md text-sm font-medium hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {removingId === e.id ? 'Menghapus...' : 'Hapus'}
-                        </button>
-                      </div>
+                      <option key={optionKey} value={k.id}>
+                        [{k.course?.program_study || 'Program Studi'}] {k.course?.course_code || 'MK'} - {k.class_name} ({k.academic_year} {k.semester_period})
+                      </option>
                     );
                   })}
-                  
-                  {enrollments.length === 0 && !loading && (
-                    <div className="text-center py-12">
-                      <MdGroup className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">Belum Ada Mahasiswa</h3>
-                      <p className="text-gray-600">Mulai tambahkan mahasiswa dari panel sebelah kiri</p>
+                </>
+              )}
+            </select>
+          </div>
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Add Students Card */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/20 p-8" data-aos="fade-up" data-aos-delay="200">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl">
+                  <MdPersonAdd className="w-6 h-6 text-white" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800">Tambah Mahasiswa</h2>
+              </div>
+              <div className="flex items-center gap-2 bg-gray-50/80 rounded-2xl px-4 py-2 border border-gray-200">
+                <MdSearch className="w-4 h-4 text-gray-500" />
+                <input 
+                  value={search} 
+                  onChange={(e) => setSearch(e.target.value)} 
+                  className="bg-transparent border-none outline-none text-sm placeholder-gray-400 flex-1 min-w-0" 
+                  placeholder="Cari nama/NIM" 
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-3 max-h-96 overflow-auto">
+              {!classId && (
+                <div className="text-center py-8">
+                  <MdClass className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">Pilih kelas terlebih dahulu untuk menambahkan mahasiswa</p>
+                </div>
+              )}
+              {classId && visibleStudents.map((u) => {
+                const userKey = u.id ?? `student-${u.user_id}`;
+                return (
+                  <div key={userKey} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+                      <span className="text-white font-medium text-sm">
+                        {u.full_name?.charAt(0)?.toUpperCase() || 'M'}
+                      </span>
                     </div>
-                  )}
-                  
-                  {loading && enrollments.length === 0 && (
-                    <div className="text-center py-12">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
-                      <p className="text-gray-600">Memuat data pendaftaran...</p>
+                    <div>
+                      <div className="font-medium text-gray-800">{u.full_name}</div>
+                      <div className="text-xs text-gray-500">
+                        {u.user_id} • {u.program_study || 'Program Studi tidak diketahui'}
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    disabled={loading || enrollingId === u.user_id || !classId} 
+                    onClick={() => enroll(u.user_id)} 
+                    className={`px-4 py-2 ${enrollingId === u.user_id ? 'from-gray-400 to-gray-500 cursor-wait' : !classId ? 'from-gray-300 to-gray-400 cursor-not-allowed' : 'from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'} bg-gradient-to-r disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl text-sm font-medium transition-all duration-300 shadow-md hover:shadow-lg transform ${enrollingId === u.user_id || !classId ? '' : 'hover:scale-105'} disabled:transform-none`}
+                  >
+                    {enrollingId === u.user_id ? 'Memproses...' : !classId ? 'Pilih Kelas' : 'Tambah'}
+                  </button>
+                </div>
+                );
+              })}
+              {classId && visibleStudents.length === 0 && !loading && (
+                <div className="text-center py-8">
+                  <MdPeople className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  {students.length === 0 ? (
+                    <p className="text-gray-500">Tidak ada mahasiswa tersedia</p>
+                  ) : search ? (
+                    <p className="text-gray-500">Tidak ada mahasiswa yang sesuai dengan pencarian</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-gray-500">Tidak ada mahasiswa tersedia untuk ditambahkan</p>
+                      <p className="text-xs text-gray-400">
+                        Mahasiswa sudah terdaftar di kelas ini atau di kelas lain
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        (Satu mahasiswa hanya dapat terdaftar di satu kelas aktif)
+                      </p>
                     </div>
                   )}
                 </div>
+              )}
+              {classId && loading && (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
+                  <p className="text-gray-500">Memuat data...</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Enrolled Students Card */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/20 p-8" data-aos="fade-up" data-aos-delay="300">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl">
+                <MdGroup className="w-6 h-6 text-white" />
               </div>
+              <h2 className="text-xl font-bold text-gray-800">Mahasiswa Terdaftar</h2>
+              <div className="ml-auto px-3 py-1 bg-gradient-to-r from-indigo-100 to-purple-100 rounded-full">
+                <span className="text-sm font-medium text-indigo-700">
+                  {enrollments.length} siswa
+                </span>
+              </div>
+            </div>
+            
+            <div className="space-y-3 max-h-96 overflow-auto">
+              {enrollments.map((e) => {
+                const enrollmentKey = e.id ?? `enroll-${e.class_id}-${e.student_id}`;
+                return (
+                  <div key={enrollmentKey} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                      <span className="text-white font-medium text-sm">
+                        {e.student?.full_name?.charAt(0)?.toUpperCase() || 'M'}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-800">{e.student?.full_name || '-'}</div>
+                      <div className="text-xs text-gray-500 flex items-center gap-2">
+                        {e.student?.user_id || ''} 
+                        {e.student?.program_study && (
+                          <>
+                            <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                            <span>{e.student.program_study}</span>
+                          </>
+                        )}
+                        <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          e.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {e.status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => removeEnrollment(e.id, e.student?.full_name || 'mahasiswa ini')}
+                    disabled={loading || removingId === e.id}
+                    className={`px-3 py-2 bg-gradient-to-r ${removingId === e.id ? 'from-gray-400 to-gray-500 cursor-wait' : 'from-red-500 to-red-600 hover:from-red-600 hover:to-red-700'} disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl text-sm font-medium transition-all duration-300 shadow-md hover:shadow-lg transform ${removingId === e.id ? '' : 'hover:scale-105'} disabled:transform-none flex items-center gap-2`}
+                  >
+                    <MdDelete className="w-4 h-4" /> 
+                    {removingId === e.id ? 'Menghapus...' : 'Hapus'}
+                  </button>
+                </div>
+                );
+              })}
+              {enrollments.length === 0 && !loading && (
+                <div className="text-center py-8">
+                  <MdGroup className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">Belum ada mahasiswa terdaftar</p>
+                  <p className="text-xs text-gray-400 mt-1">Mulai tambahkan mahasiswa dari panel sebelah kiri</p>
+                </div>
+              )}
+              {loading && enrollments.length === 0 && (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3"></div>
+                  <p className="text-gray-500">Memuat data pendaftaran...</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Help Section */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-8" data-aos="fade-up" data-aos-delay="400">
-          <div className="flex items-start space-x-4">
-            <div className="p-2 bg-yellow-100 rounded-lg flex-shrink-0">
-              <MdAutoAwesome className="w-5 h-5 text-yellow-600" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">Panduan Penggunaan</h3>
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/20 p-8" data-aos="fade-up" data-aos-delay="400">
+          <div className="flex items-start gap-3">
+            <MdAutoAwesome className="w-6 h-6 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <h3 className="font-bold text-gray-800 mb-2">Tips Pengelolaan Kelas</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
                 <div className="space-y-2">
                   <p>• <strong>Pilih Kelas:</strong> Gunakan dropdown untuk memilih kelas yang akan dikelola</p>

@@ -14,9 +14,7 @@ import {
   MdPersonAdd,
   MdFileUpload,
   MdDataset,
-  MdVerified,
-  MdPersonPin,
-  MdSchool
+  MdVerified
 } from "react-icons/md";
 
 // Import components (cleaned up - removed unused components)
@@ -31,10 +29,8 @@ import AttendanceManagement from "../views/super-admin/attendance";
 import AttendanceHistory from "../views/super-admin/attendance/components/AttendanceHistory";
 import ManualVerification from "../views/super-admin/attendance/components/ManualVerification";
 import RoomAccess from "../views/super-admin/room-access";
-import AdminProfile from "../views/super-admin/profile/AdminProfile";
 import AddClass from "../views/super-admin/courses/AddClass";
 import ManageClassUsers from "../views/super-admin/courses/ManageClassUsers";
-import AddCourse from "../views/super-admin/courses/AddCourse";
 import ClassList from "../views/super-admin/courses/ClassList";
 
 const routes = [
@@ -151,22 +147,6 @@ const routes = [
     icon: <MdManageAccounts className="h-6 w-6 ml-10" />,
     component: <ManageClassUsers />,
     secondary: true,
-  },
-  {
-    name: "Tambah Mata Kuliah",
-    layout: "/admin",
-    parentPath: "class-management",
-    path: "add-course",
-    icon: <MdSchool className="h-6 w-6 ml-10" />,
-    component: <AddCourse />,
-    secondary: true,
-  },
-  {
-    name: "Profil Admin",
-    layout: "/admin",
-    path: "profile",
-    icon: <MdPersonPin className="h-6 w-6" />,
-    component: <AdminProfile />,
   },
   {
     name: "Logout",
