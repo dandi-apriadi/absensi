@@ -1,5 +1,6 @@
 import express from 'express';
 import UserManagementRoute from './administrator/userManagementRoutes.js';
+import AttendanceAdminRoute from './administrator/attendanceRoutes.js';
 import SharedAuthRoute from './shared/authRoutes.js';
 import NotificationRoute from './shared/notificationRoutes.js';
 import SystemRoute from './shared/systemRoutes.js';
@@ -14,6 +15,7 @@ const router = express.Router();
 
 // Administrator routes
 router.use('/api/admin', UserManagementRoute);
+router.use('/api/attendance', AttendanceAdminRoute);
 
 // Shared routes (all user roles)
 router.use('/api/auth', SharedAuthRoute);
