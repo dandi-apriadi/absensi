@@ -17,6 +17,12 @@ import AOS from 'aos';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:5001";
 
+// Create axios instance to avoid repeating config
+const api = axios.create({
+  baseURL: API_BASE,
+  withCredentials: true
+});
+
 const ManageClassUsers = () => {
   const [classId, setClassId] = useState("");
   const [classes, setClasses] = useState([]);
@@ -29,18 +35,44 @@ const ManageClassUsers = () => {
   const fetchAllClasses = async () => {
     try {
       setLoading(true);
-      // Fetch Teknik Informatika courses then load their classes
-      const courses = await axios.get(`${API_BASE}/api/courses`, { withCredentials: true, params: { limit: 200, program_study: "Teknik Informatika" } });
-      const all = [];
-      for (const c of courses.data?.data?.courses || []) {
-        const cls = await axios.get(`${API_BASE}/api/courses/${c.id}/classes`, { withCredentials: true, params: { limit: 200 } });
-        (cls.data?.data?.classes || []).forEach((k) => all.push({ ...k, course: c }));
+      // Fetch Teknik Informatika courses then load their classes (concurrently)
+      const coursesRes = await api.get(`/api/courses`, { params: { limit: 200, program_study: "Teknik Informatika" } });
+      const courseList = coursesRes.data?.data?.courses || [];
+      if (courseList.length === 0) {
+        setClasses([]);
+        return;
       }
-      setClasses(all);
-      if (all[0]?.id) setClassId(String(all[0].id));
+      const classPromises = courseList.map(c =>
+        api.get(`/api/courses/${c.id}/classes`, { params: { limit: 200 } })
+          .then(r => (r.data?.data?.classes || []).map(k => ({ ...k, course: c })))
+          .catch(() => [])
+      );
+      const results = await Promise.all(classPromises);
+      const all = results.flat();
+      // Deduplicate & ensure each item has a stable key
+      const unique = [];
+      const seen = new Set();
+      let duplicateCount = 0;
+      for (const item of all) {
+        if (!item) continue;
+        const key = item.id ?? `${item.course_id || item.course?.id || 'x'}-${item.class_name}`;
+        if (seen.has(key)) {
+          duplicateCount++;
+          continue;
+        }
+        seen.add(key);
+        unique.push(item);
+      }
+      if (duplicateCount > 0) {
+        console.warn(`Filtered out ${duplicateCount} duplicate class entries (same id/key)`);
+      }
+      setClasses(unique);
+      if (unique[0]?.id) setClassId(String(unique[0].id));
     } catch (e) {
       console.error('Failed to fetch classes:', e);
-      if (e.response?.status === 403) {
+      if (e.response?.status === 401) {
+        setMessage({ type: "error", text: "Sesi berakhir. Silakan login kembali." });
+      } else if (e.response?.status === 403) {
         setMessage({ type: "error", text: "Akses ditolak. Pastikan Anda sudah login dengan benar." });
       } else {
         setMessage({ type: "error", text: "Gagal memuat daftar kelas" });
@@ -54,11 +86,13 @@ const ManageClassUsers = () => {
     if (!id) return;
     try {
       setLoading(true);
-      const res = await axios.get(`${API_BASE}/api/courses/classes/${id}/enrollments`, { withCredentials: true, params: { limit: 500 } });
+      const res = await api.get(`/api/courses/classes/${id}/enrollments`, { params: { limit: 500 } });
       setEnrollments(res.data?.data?.enrollments || []);
     } catch (e) {
       console.error('Failed to fetch enrollments:', e);
-      if (e.response?.status === 403) {
+      if (e.response?.status === 401) {
+        setMessage({ type: "error", text: "Sesi berakhir. Silakan login kembali." });
+      } else if (e.response?.status === 403) {
         setMessage({ type: "error", text: "Akses ditolak. Pastikan Anda sudah login dengan benar." });
       } else {
         setMessage({ type: "error", text: "Gagal memuat daftar anggota kelas" });
@@ -71,20 +105,29 @@ const ManageClassUsers = () => {
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${API_BASE}/api/admin/users`, { 
-        withCredentials: true, 
-        params: { 
+      // Backend expects 'role=student' and supports 'full_name' mapped to fullname; we request with sortBy full_name for clarity
+      const res = await api.get(`/api/admin/users`, {
+        params: {
           role: 'student',
           limit: 500,
-          sortBy: 'fullname', // Changed from 'full_name' to 'fullname'
+            // use full_name to map to backend sort mapping; search left empty
+          sortBy: 'full_name',
           sortOrder: 'ASC'
-        } 
+        }
       });
-      setStudents(res.data?.data?.users || []);
+      const rawUsers = res.data?.data?.users || [];
+      // Normalize naming (backend returns full_name already, but ensure fallback)
+      const normalized = rawUsers.map(u => ({
+        ...u,
+        full_name: u.full_name || u.fullname || u.fullName || ''
+      }));
+      setStudents(normalized);
     } catch (e) {
       console.error('Failed to fetch students:', e);
-      if (e.response?.status === 403) {
-        setMessage({ type: "error", text: "Akses ditolak. Pastikan Anda sudah login sebagai super admin." });
+      if (e.response?.status === 401) {
+        setMessage({ type: "error", text: "Sesi berakhir. Silakan login kembali sebagai super admin." });
+      } else if (e.response?.status === 403) {
+        setMessage({ type: "error", text: "Akses ditolak. Pastikan Anda login sebagai super admin." });
       } else {
         setMessage({ type: "error", text: "Gagal memuat daftar mahasiswa" });
       }
@@ -146,11 +189,7 @@ const ManageClassUsers = () => {
     if (!classId) return;
     try {
       setLoading(true);
-      await axios.post(
-        `${API_BASE}/api/courses/enrollments`,
-        { class_id: Number(classId), student_id },
-        { withCredentials: true }
-      );
+      await api.post(`/api/courses/enrollments`, { class_id: Number(classId), student_id });
       setMessage({ type: "success", text: "Mahasiswa berhasil ditambahkan" });
       fetchEnrollments(classId);
     } catch (e) {
@@ -163,7 +202,6 @@ const ManageClassUsers = () => {
 
   const removeEnrollment = async (enrollmentId, studentName) => {
     if (!enrollmentId) return;
-    
     // Show confirmation dialog
     if (!window.confirm(`Apakah Anda yakin ingin menghapus ${studentName} dari kelas ini?`)) {
       return;
@@ -171,10 +209,7 @@ const ManageClassUsers = () => {
     
     try {
       setLoading(true);
-      await axios.delete(
-        `${API_BASE}/api/courses/enrollments/${enrollmentId}`,
-        { withCredentials: true }
-      );
+      await api.delete(`/api/courses/enrollments/${enrollmentId}`);
       setMessage({ type: "success", text: "Mahasiswa berhasil dihapus dari kelas" });
       fetchEnrollments(classId);
     } catch (e) {
@@ -260,11 +295,14 @@ const ManageClassUsers = () => {
               value={classId} 
               onChange={(e) => setClassId(e.target.value)}
             >
-              {classes.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.course?.course_code || 'MK'} - {k.class_name} ({k.academic_year} {k.semester_period})
-                </option>
-              ))}
+              {classes.map((k) => {
+                const optionKey = k.id ?? `${k.course_id || k.course?.id || 'c'}-${k.class_name}`;
+                return (
+                  <option key={optionKey} value={k.id}>
+                    {k.course?.course_code || 'MK'} - {k.class_name} ({k.academic_year} {k.semester_period})
+                  </option>
+                );
+              })}
             </select>
           </div>
         </div>
@@ -292,8 +330,10 @@ const ManageClassUsers = () => {
             </div>
             
             <div className="space-y-3 max-h-96 overflow-auto">
-              {visibleStudents.map((u) => (
-                <div key={u.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
+              {visibleStudents.map((u) => {
+                const userKey = u.id ?? `student-${u.user_id}`;
+                return (
+                  <div key={userKey} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
                       <span className="text-white font-medium text-sm">
@@ -313,7 +353,8 @@ const ManageClassUsers = () => {
                     Tambah
                   </button>
                 </div>
-              ))}
+                );
+              })}
               {visibleStudents.length === 0 && !loading && (
                 <div className="text-center py-8">
                   <MdPeople className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -350,8 +391,10 @@ const ManageClassUsers = () => {
             </div>
             
             <div className="space-y-3 max-h-96 overflow-auto">
-              {enrollments.map((e) => (
-                <div key={e.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 shadow-sm">
+              {enrollments.map((e) => {
+                const enrollmentKey = e.id ?? `enroll-${e.class_id}-${e.student_id}`;
+                return (
+                  <div key={enrollmentKey} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 shadow-sm">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
                       <span className="text-white font-medium text-sm">
@@ -380,7 +423,8 @@ const ManageClassUsers = () => {
                     Hapus
                   </button>
                 </div>
-              ))}
+                );
+              })}
               {enrollments.length === 0 && !loading && (
                 <div className="text-center py-8">
                   <MdGroup className="w-12 h-12 text-gray-300 mx-auto mb-3" />
