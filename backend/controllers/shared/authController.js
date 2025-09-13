@@ -189,7 +189,9 @@ export const getProfile = async (req, res) => {
             });
         }
 
-        const user = await Users.findByPk(req.session.userId);
+        const user = await Users.findOne({
+            where: { user_id: req.session.userId }
+        });
 
         if (!user) {
             return res.status(404).json({

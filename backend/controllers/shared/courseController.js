@@ -658,12 +658,17 @@ export const getClassEnrollments = async (req, res) => {
         // Enrich with student basic info (manual join)
         const rows = await Promise.all(enrollments.rows.map(async (e) => {
             const student = await Users.findByPk(e.student_id);
+            // Provide defensive fallback for name field variants
+            let fullName = null;
+            if (student) {
+                fullName = student.full_name || student.fullname || student.name || null;
+            }
             return {
                 ...e.toJSON(),
                 student: student ? {
                     id: student.id,
                     user_id: student.user_id,
-                    full_name: student.full_name,
+                    full_name: fullName,
                     email: student.email,
                     program_study: student.program_study,
                     semester: student.semester
@@ -673,6 +678,7 @@ export const getClassEnrollments = async (req, res) => {
 
         res.status(200).json({
             success: true,
+            code: 'ENROLLMENTS_FETCH_SUCCESS',
             data: {
                 enrollments: rows,
                 pagination: {
@@ -687,6 +693,7 @@ export const getClassEnrollments = async (req, res) => {
         console.error('Get class enrollments error:', error);
         res.status(500).json({
             success: false,
+            code: 'ENROLLMENTS_FETCH_ERROR',
             message: "Gagal mengambil data pendaftaran kelas"
         });
     }
@@ -697,40 +704,64 @@ export const getClassEnrollments = async (req, res) => {
  */
 export const enrollStudent = async (req, res) => {
     try {
-    const { class_id, student_id } = req.body;
-    const userRole = req.session.role;
-    const userId = req.session.userId;
+        const { class_id, student_id } = req.body;
+        // Prefer normalized fields from verifyUser middleware, fallback to session legacy keys
+        const userRole = req.role || req.session?.role || req.session?.userRole;
+        const userId = req.user_id || req.session?.user_id || req.session?.userId;
+
+        // Debug logging
+        console.log('Enroll Student - Auth info:', {
+            userRole,
+            userId,
+            sessionExists: !!req.session,
+            class_id,
+            student_id
+        });
+
+        // Authorization check - Allow super-admin, admin, and students (for self-enrollment)
+        const allowedRoles = ['super-admin', 'admin', 'student'];
+        if (!userRole || !allowedRoles.includes(userRole)) {
+            return res.status(403).json({
+                success: false,
+                code: 'FORBIDDEN_ROLE',
+                message: `Akses ditolak. Role '${userRole}' tidak diizinkan untuk mendaftarkan mahasiswa.`
+            });
+        }
 
         // Validation
         if (!class_id || !student_id) {
             return res.status(400).json({
                 success: false,
+                code: 'VALIDATION_ERROR',
                 message: "Class ID dan Student ID harus diisi"
             });
         }
 
-    // Check if class exists
-    const courseClass = await CourseClasses.findByPk(class_id);
+        // Check if class exists
+        const courseClass = await CourseClasses.findByPk(class_id);
         if (!courseClass) {
             return res.status(404).json({
                 success: false,
+                code: 'CLASS_NOT_FOUND',
                 message: "Kelas tidak ditemukan"
             });
-    }
+        }
 
-    // Check if student exists
-    const student = await Users.findOne({ where: { id: student_id, role: 'student' } });
+        // Check if student exists
+        const student = await Users.findOne({ where: { user_id: student_id, role: 'student' } });
         if (!student) {
             return res.status(404).json({
                 success: false,
+                code: 'STUDENT_NOT_FOUND',
                 message: "Mahasiswa tidak ditemukan"
             });
         }
 
         // If student is enrolling themselves, check if they own the account
-        if (userRole === 'student' && student.id !== userId) {
+        if (userRole === 'student' && student.user_id !== userId) {
             return res.status(403).json({
                 success: false,
+                code: 'FORBIDDEN_SELF_ENROLL_ONLY',
                 message: "Anda hanya dapat mendaftarkan diri sendiri"
             });
         }
@@ -743,16 +774,18 @@ export const enrollStudent = async (req, res) => {
         if (existingEnrollment) {
             return res.status(400).json({
                 success: false,
+                code: 'ALREADY_ENROLLED',
                 message: "Mahasiswa sudah terdaftar di kelas ini"
             });
         }
 
         // Check class capacity
-    const currentEnrollments = await StudentEnrollments.count({ where: { class_id, status: { [Op.in]: ['enrolled', 'active'] } } });
+        const currentEnrollments = await StudentEnrollments.count({ where: { class_id, status: { [Op.in]: ['enrolled', 'active'] } } });
 
         if (currentEnrollments >= courseClass.max_students) {
             return res.status(400).json({
                 success: false,
+                code: 'CLASS_FULL',
                 message: "Kelas sudah penuh"
             });
         }
@@ -764,8 +797,11 @@ export const enrollStudent = async (req, res) => {
             status: 'enrolled'
         });
 
+        console.log('Enrollment created successfully:', enrollment.toJSON());
+
         res.status(201).json({
             success: true,
+            code: 'ENROLL_SUCCESS',
             message: "Mahasiswa berhasil didaftarkan ke kelas",
             data: enrollment
         });
@@ -773,6 +809,7 @@ export const enrollStudent = async (req, res) => {
         console.error('Enroll student error:', error);
         res.status(500).json({
             success: false,
+            code: 'ENROLL_SERVER_ERROR',
             message: "Gagal mendaftarkan mahasiswa ke kelas"
         });
     }
@@ -786,6 +823,7 @@ export const updateEnrollmentStatus = async (req, res) => {
     if (req.session.role !== 'super-admin' && req.session.role !== 'lecturer') {
             return res.status(403).json({
                 success: false,
+                code: 'FORBIDDEN_ENROLLMENT_STATUS_UPDATE',
                 message: "Akses ditolak. Hanya admin atau dosen yang dapat mengubah status pendaftaran"
             });
         }
@@ -797,6 +835,7 @@ export const updateEnrollmentStatus = async (req, res) => {
         if (!enrollment) {
             return res.status(404).json({
                 success: false,
+                code: 'ENROLLMENT_NOT_FOUND',
                 message: "Data pendaftaran tidak ditemukan"
             });
         }
@@ -805,6 +844,7 @@ export const updateEnrollmentStatus = async (req, res) => {
 
         res.status(200).json({
             success: true,
+            code: 'ENROLLMENT_STATUS_UPDATED',
             message: "Status pendaftaran berhasil diperbarui",
             data: enrollment
         });
@@ -812,6 +852,7 @@ export const updateEnrollmentStatus = async (req, res) => {
         console.error('Update enrollment status error:', error);
         res.status(500).json({
             success: false,
+            code: 'ENROLLMENT_STATUS_UPDATE_ERROR',
             message: "Gagal memperbarui status pendaftaran"
         });
     }
@@ -825,6 +866,7 @@ export const deleteEnrollment = async (req, res) => {
         if (req.session.role !== 'super-admin' && req.session.role !== 'lecturer') {
             return res.status(403).json({
                 success: false,
+                code: 'FORBIDDEN_ENROLLMENT_DELETE',
                 message: "Akses ditolak. Hanya admin atau dosen yang dapat menghapus pendaftaran"
             });
         }
@@ -835,6 +877,7 @@ export const deleteEnrollment = async (req, res) => {
         if (!enrollment) {
             return res.status(404).json({
                 success: false,
+                code: 'ENROLLMENT_NOT_FOUND',
                 message: "Data pendaftaran tidak ditemukan"
             });
         }
@@ -843,12 +886,14 @@ export const deleteEnrollment = async (req, res) => {
 
         res.status(200).json({
             success: true,
+            code: 'ENROLLMENT_DELETED',
             message: "Mahasiswa berhasil dihapus dari kelas"
         });
     } catch (error) {
         console.error('Delete enrollment error:', error);
         res.status(500).json({
             success: false,
+            code: 'ENROLLMENT_DELETE_ERROR',
             message: "Gagal menghapus pendaftaran mahasiswa"
         });
     }

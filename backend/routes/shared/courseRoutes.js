@@ -40,9 +40,9 @@ router.post('/classes/check-conflicts', verifyUser, checkClassScheduleConflicts)
 router.post('/classes/demo', createCourseClassDemo); // Demo endpoint without auth for testing
 
 // Enrollments
-router.get('/classes/:class_id/enrollments', getClassEnrollments);
-router.post('/enrollments', enrollStudent);
-router.patch('/enrollments/:id/status', updateEnrollmentStatus);
-router.delete('/enrollments/:id', deleteEnrollment);
+router.get('/classes/:class_id/enrollments', verifyUser, getClassEnrollments);
+router.post('/enrollments', verifyUser, enrollStudent);
+router.patch('/enrollments/:id/status', verifyUser, updateEnrollmentStatus);
+router.delete('/enrollments/:id', verifyUser, deleteEnrollment);
 
 export default router;

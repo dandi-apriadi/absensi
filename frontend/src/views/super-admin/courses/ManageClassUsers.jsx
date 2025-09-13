@@ -31,51 +31,52 @@ const ManageClassUsers = () => {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
+  // Fine-grained action states
+  const [enrollingId, setEnrollingId] = useState(null);
+  const [removingId, setRemovingId] = useState(null);
 
   const fetchAllClasses = async () => {
     try {
       setLoading(true);
-      // Fetch Teknik Informatika courses then load their classes (concurrently)
-      const coursesRes = await api.get(`/api/courses`, { params: { limit: 200, program_study: "Teknik Informatika" } });
-      const courseList = coursesRes.data?.data?.courses || [];
-      if (courseList.length === 0) {
-        setClasses([]);
-        return;
+      console.log('Fetching all classes from all study programs...');
+      
+      // Use the new endpoint that gets all classes with stats directly - remove program_study filter
+      const res = await api.get('/api/courses/classes/all-with-stats', { 
+        params: { 
+          limit: 500 // Increase limit to get more classes from all programs
+        } 
+      });
+      
+      console.log('Classes API response:', res.data);
+      const classList = res.data?.data?.classes || [];
+      console.log('Fetched classes:', classList);
+      
+      // Filter out null entries and ensure each item has required fields
+      const validClasses = classList.filter(cls => cls && cls.id && cls.course);
+      console.log('Valid classes after filtering:', validClasses);
+      
+      setClasses(validClasses);
+      if (validClasses.length > 0 && validClasses[0]?.id) {
+        console.log('Setting default class ID:', validClasses[0].id);
+        setClassId(String(validClasses[0].id));
       }
-      const classPromises = courseList.map(c =>
-        api.get(`/api/courses/${c.id}/classes`, { params: { limit: 200 } })
-          .then(r => (r.data?.data?.classes || []).map(k => ({ ...k, course: c })))
-          .catch(() => [])
-      );
-      const results = await Promise.all(classPromises);
-      const all = results.flat();
-      // Deduplicate & ensure each item has a stable key
-      const unique = [];
-      const seen = new Set();
-      let duplicateCount = 0;
-      for (const item of all) {
-        if (!item) continue;
-        const key = item.id ?? `${item.course_id || item.course?.id || 'x'}-${item.class_name}`;
-        if (seen.has(key)) {
-          duplicateCount++;
-          continue;
-        }
-        seen.add(key);
-        unique.push(item);
+      
+      if (validClasses.length === 0) {
+        console.log('No valid classes found');
+        setMessage({ type: "info", text: "Tidak ada kelas yang tersedia di database." });
       }
-      if (duplicateCount > 0) {
-        console.warn(`Filtered out ${duplicateCount} duplicate class entries (same id/key)`);
-      }
-      setClasses(unique);
-      if (unique[0]?.id) setClassId(String(unique[0].id));
     } catch (e) {
       console.error('Failed to fetch classes:', e);
+      console.error('Error response:', e.response?.data);
+      console.error('Error status:', e.response?.status);
+      console.error('Error message:', e.message);
+      console.error('Full error object:', e);
       if (e.response?.status === 401) {
         setMessage({ type: "error", text: "Sesi berakhir. Silakan login kembali." });
       } else if (e.response?.status === 403) {
         setMessage({ type: "error", text: "Akses ditolak. Pastikan Anda sudah login dengan benar." });
       } else {
-        setMessage({ type: "error", text: "Gagal memuat daftar kelas" });
+        setMessage({ type: "error", text: "Gagal memuat daftar kelas. " + (e.response?.data?.message || e.message) });
       }
     } finally {
       setLoading(false);
@@ -86,16 +87,21 @@ const ManageClassUsers = () => {
     if (!id) return;
     try {
       setLoading(true);
+      console.log('Fetching enrollments for class ID:', id);
       const res = await api.get(`/api/courses/classes/${id}/enrollments`, { params: { limit: 500 } });
+      console.log('Enrollments API response:', res.data);
       setEnrollments(res.data?.data?.enrollments || []);
     } catch (e) {
       console.error('Failed to fetch enrollments:', e);
+      console.error('Error response:', e.response?.data);
+      console.error('Error status:', e.response?.status);
+      console.error('Error message:', e.message);
       if (e.response?.status === 401) {
         setMessage({ type: "error", text: "Sesi berakhir. Silakan login kembali." });
       } else if (e.response?.status === 403) {
         setMessage({ type: "error", text: "Akses ditolak. Pastikan Anda sudah login dengan benar." });
       } else {
-        setMessage({ type: "error", text: "Gagal memuat daftar anggota kelas" });
+        setMessage({ type: "error", text: "Gagal memuat daftar anggota kelas. " + (e.response?.data?.message || e.message) });
       }
     } finally {
       setLoading(false);
@@ -105,31 +111,37 @@ const ManageClassUsers = () => {
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      // Backend expects 'role=student' and supports 'full_name' mapped to fullname; we request with sortBy full_name for clarity
+      console.log('Fetching all students from all study programs...');
+      // Get all students regardless of program study
       const res = await api.get(`/api/admin/users`, {
         params: {
           role: 'student',
-          limit: 500,
-            // use full_name to map to backend sort mapping; search left empty
+          limit: 1000, // Increase limit to get more students
           sortBy: 'full_name',
           sortOrder: 'ASC'
         }
       });
+      console.log('Students API response:', res.data);
       const rawUsers = res.data?.data?.users || [];
+      console.log('Raw users data:', rawUsers);
       // Normalize naming (backend returns full_name already, but ensure fallback)
       const normalized = rawUsers.map(u => ({
         ...u,
         full_name: u.full_name || u.fullname || u.fullName || ''
       }));
+      console.log('Normalized students:', normalized);
       setStudents(normalized);
     } catch (e) {
       console.error('Failed to fetch students:', e);
+      console.error('Error response:', e.response?.data);
+      console.error('Error status:', e.response?.status);
+      console.error('Error message:', e.message);
       if (e.response?.status === 401) {
         setMessage({ type: "error", text: "Sesi berakhir. Silakan login kembali sebagai super admin." });
       } else if (e.response?.status === 403) {
         setMessage({ type: "error", text: "Akses ditolak. Pastikan Anda login sebagai super admin." });
       } else {
-        setMessage({ type: "error", text: "Gagal memuat daftar mahasiswa" });
+        setMessage({ type: "error", text: "Gagal memuat daftar mahasiswa. " + (e.response?.data?.message || e.message) });
       }
       setStudents([]);
     } finally {
@@ -138,19 +150,24 @@ const ManageClassUsers = () => {
   };
 
   useEffect(() => {
+    console.log('Component mounted, initializing...');
     AOS.init({
       duration: 800,
       once: true,
       easing: 'ease-out-cubic'
     });
+    console.log('Starting to fetch classes and students...');
     fetchAllClasses();
     fetchStudents();
   }, []);
 
   useEffect(() => {
+    console.log('Class ID changed to:', classId);
     if (classId) {
+      console.log('Fetching enrollments for new class ID:', classId);
       fetchEnrollments(classId);
     } else {
+      console.log('No class ID selected, clearing enrollments');
       setEnrollments([]);
     }
   }, [classId]);
@@ -158,6 +175,7 @@ const ManageClassUsers = () => {
   // Clear message after 5 seconds
   useEffect(() => {
     if (message) {
+      console.log('Message set:', message);
       const timer = setTimeout(() => {
         setMessage(null);
       }, 5000);
@@ -165,7 +183,27 @@ const ManageClassUsers = () => {
     }
   }, [message]);
 
+  // Debug logging for current state
+  useEffect(() => {
+    console.log('=== CURRENT STATE ===');
+    console.log('Classes:', classes.length, classes);
+    console.log('Students:', students.length, students);
+    console.log('Enrollments:', enrollments.length, enrollments);
+    console.log('Selected Class ID:', classId);
+    console.log('Loading:', loading);
+    console.log('Message:', message);
+    console.log('Visible Students:', visibleStudents.length);
+    console.log('=====================');
+  });
+
   const visibleStudents = useMemo(() => {
+    console.log('Computing visible students...', {
+      totalStudents: students.length,
+      search,
+      classId,
+      enrollmentsCount: enrollments.length
+    });
+    
     if (!search && !classId) return students;
     
     let filtered = students;
@@ -174,49 +212,106 @@ const ManageClassUsers = () => {
     if (search) {
       const s = search.toLowerCase();
       filtered = filtered.filter((u) => `${u.full_name} ${u.user_id}`.toLowerCase().includes(s));
+      console.log('After search filter:', filtered.length);
     }
     
     // Filter out already enrolled students
     if (classId && enrollments.length > 0) {
       const enrolledStudentIds = enrollments.map(e => e.student_id);
+      console.log('Enrolled student IDs:', enrolledStudentIds);
       filtered = filtered.filter(student => !enrolledStudentIds.includes(student.id));
+      console.log('After enrollment filter:', filtered.length);
     }
     
+    console.log('Final visible students:', filtered.length);
     return filtered;
   }, [students, search, classId, enrollments]);
 
   const enroll = async (student_id) => {
-    if (!classId) return;
+    if (!classId || enrollingId) return;
+    
+    // Prevent duplicate enroll if already present locally
+    if (enrollments.some(e => e.student_id === student_id)) {
+      setMessage({ type: 'error', text: 'Mahasiswa sudah terdaftar (lokal).' });
+      return;
+    }
+    
+    setEnrollingId(student_id);
     try {
-      setLoading(true);
-      await api.post(`/api/courses/enrollments`, { class_id: Number(classId), student_id });
-      setMessage({ type: "success", text: "Mahasiswa berhasil ditambahkan" });
-      fetchEnrollments(classId);
+      const payload = { class_id: Number(classId), student_id };
+      const studentRef = students.find(s => s.id === student_id);
+      
+      console.log('Enrolling student:', payload);
+      
+      // Optimistic update
+      setEnrollments(prev => ([
+        ...prev,
+        {
+          id: `temp-${Date.now()}`,
+          class_id: payload.class_id,
+          student_id,
+          enrollment_date: new Date().toISOString(),
+          status: 'enrolled',
+          student: studentRef ? {
+            id: studentRef.id,
+            user_id: studentRef.user_id,
+            full_name: studentRef.full_name
+          } : null,
+          _optimistic: true
+        }
+      ]));
+      
+      const res = await api.post(`/api/courses/enrollments`, payload);
+      console.log('Enrollment response:', res.data);
+      
+      setMessage({ type: 'success', text: res.data?.message || 'Mahasiswa berhasil ditambahkan' });
+      
+      // Refresh to replace optimistic temp item with real DB record
+      await fetchEnrollments(classId);
     } catch (e) {
-      const text = e?.response?.data?.message || "Gagal menambahkan mahasiswa";
-      setMessage({ type: "error", text });
+      console.error('Enrollment error:', e);
+      
+      // Rollback optimistic item
+      setEnrollments(prev => prev.filter(en => !String(en.id).startsWith('temp-')));
+      
+      const backendMsg = e?.response?.data?.message;
+      let friendly = backendMsg || 'Gagal menambahkan mahasiswa';
+      
+      if (/sudah terdaftar/i.test(friendly)) friendly = 'Mahasiswa sudah terdaftar di kelas ini';
+      if (/penuh/i.test(friendly)) friendly = 'Kelas sudah penuh';
+      if (e.response?.status === 401) friendly = 'Sesi berakhir. Silakan login kembali.';
+      if (e.response?.status === 403) friendly = 'Tidak memiliki izin untuk menambah mahasiswa.';
+      
+      setMessage({ type: 'error', text: friendly });
     } finally {
-      setLoading(false);
+      setEnrollingId(null);
     }
   };
 
   const removeEnrollment = async (enrollmentId, studentName) => {
-    if (!enrollmentId) return;
-    // Show confirmation dialog
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus ${studentName} dari kelas ini?`)) {
-      return;
-    }
-    
+    if (!enrollmentId || removingId) return;
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus ${studentName} dari kelas ini?`)) return;
+    setRemovingId(enrollmentId);
     try {
-      setLoading(true);
+      console.log('Removing enrollment ID:', enrollmentId);
       await api.delete(`/api/courses/enrollments/${enrollmentId}`);
-      setMessage({ type: "success", text: "Mahasiswa berhasil dihapus dari kelas" });
-      fetchEnrollments(classId);
+      console.log('Enrollment removed successfully');
+      setMessage({ type: 'success', text: 'Mahasiswa berhasil dihapus dari kelas' });
+      // Optimistic removal (quick feedback) while refetching
+      setEnrollments(prev => prev.filter(e => e.id !== enrollmentId));
+      await fetchEnrollments(classId);
     } catch (e) {
-      const text = e?.response?.data?.message || "Gagal menghapus mahasiswa";
-      setMessage({ type: "error", text });
+      console.error('Failed to remove enrollment:', e);
+      console.error('Error response:', e.response?.data);
+      console.error('Error status:', e.response?.status);
+      console.error('Error message:', e.message);
+      const backendMsg = e?.response?.data?.message;
+      let friendly = backendMsg || 'Gagal menghapus mahasiswa';
+      if (e.response?.status === 401) friendly = 'Sesi berakhir. Silakan login kembali.';
+      if (e.response?.status === 403) friendly = 'Tidak memiliki izin untuk menghapus.';
+      setMessage({ type: 'error', text: friendly });
     } finally {
-      setLoading(false);
+      setRemovingId(null);
     }
   };
 
@@ -237,12 +332,12 @@ const ManageClassUsers = () => {
             <div className="px-4 py-2 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-full border border-blue-200">
               <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
                 <MdSchool className="w-4 h-4" />
-                Teknik Informatika
+                Semua Program Studi
               </div>
             </div>
           </div>
           <p className="text-gray-600 max-w-2xl mx-auto leading-relaxed">
-            Kelola pendaftaran mahasiswa ke dalam kelas Program Studi Teknik Informatika dengan mudah dan efisien.
+            Kelola pendaftaran mahasiswa ke dalam kelas dari seluruh Program Studi dengan mudah dan efisien.
           </p>
         </div>
 
@@ -288,21 +383,29 @@ const ManageClassUsers = () => {
           
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-600 uppercase tracking-wide">
-              Kelas Tersedia (Teknik Informatika)
+              Kelas Tersedia (Semua Program Studi)
             </label>
             <select 
               className="w-full px-4 py-3 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 bg-white/50 backdrop-blur-sm text-sm"
               value={classId} 
               onChange={(e) => setClassId(e.target.value)}
+              disabled={classes.length === 0}
             >
-              {classes.map((k) => {
-                const optionKey = k.id ?? `${k.course_id || k.course?.id || 'c'}-${k.class_name}`;
-                return (
-                  <option key={optionKey} value={k.id}>
-                    {k.course?.course_code || 'MK'} - {k.class_name} ({k.academic_year} {k.semester_period})
-                  </option>
-                );
-              })}
+              {classes.length === 0 ? (
+                <option value="">Tidak ada kelas tersedia</option>
+              ) : (
+                <>
+                  <option value="">Pilih kelas...</option>
+                  {classes.map((k) => {
+                    const optionKey = k.id ?? `${k.course_id || k.course?.id || 'c'}-${k.class_name}`;
+                    return (
+                      <option key={optionKey} value={k.id}>
+                        [{k.course?.program_study || 'Program Studi'}] {k.course?.course_code || 'MK'} - {k.class_name} ({k.academic_year} {k.semester_period})
+                      </option>
+                    );
+                  })}
+                </>
+              )}
             </select>
           </div>
         </div>
@@ -330,7 +433,13 @@ const ManageClassUsers = () => {
             </div>
             
             <div className="space-y-3 max-h-96 overflow-auto">
-              {visibleStudents.map((u) => {
+              {!classId && (
+                <div className="text-center py-8">
+                  <MdClass className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">Pilih kelas terlebih dahulu untuk menambahkan mahasiswa</p>
+                </div>
+              )}
+              {classId && visibleStudents.map((u) => {
                 const userKey = u.id ?? `student-${u.user_id}`;
                 return (
                   <div key={userKey} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
@@ -342,20 +451,22 @@ const ManageClassUsers = () => {
                     </div>
                     <div>
                       <div className="font-medium text-gray-800">{u.full_name}</div>
-                      <div className="text-xs text-gray-500">{u.user_id}</div>
+                      <div className="text-xs text-gray-500">
+                        {u.user_id} • {u.program_study || 'Program Studi tidak diketahui'}
+                      </div>
                     </div>
                   </div>
                   <button 
-                    disabled={loading} 
+                    disabled={loading || enrollingId === u.id || !classId} 
                     onClick={() => enroll(u.id)} 
-                    className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl text-sm font-medium transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105 disabled:transform-none"
+                    className={`px-4 py-2 ${enrollingId === u.id ? 'from-gray-400 to-gray-500 cursor-wait' : !classId ? 'from-gray-300 to-gray-400 cursor-not-allowed' : 'from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'} bg-gradient-to-r disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl text-sm font-medium transition-all duration-300 shadow-md hover:shadow-lg transform ${enrollingId === u.id || !classId ? '' : 'hover:scale-105'} disabled:transform-none`}
                   >
-                    Tambah
+                    {enrollingId === u.id ? 'Memproses...' : !classId ? 'Pilih Kelas' : 'Tambah'}
                   </button>
                 </div>
                 );
               })}
-              {visibleStudents.length === 0 && !loading && (
+              {classId && visibleStudents.length === 0 && !loading && (
                 <div className="text-center py-8">
                   <MdPeople className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                   {students.length === 0 ? (
@@ -367,7 +478,7 @@ const ManageClassUsers = () => {
                   )}
                 </div>
               )}
-              {loading && (
+              {classId && loading && (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
                   <p className="text-gray-500">Memuat data...</p>
@@ -405,6 +516,12 @@ const ManageClassUsers = () => {
                       <div className="font-medium text-gray-800">{e.student?.full_name || '-'}</div>
                       <div className="text-xs text-gray-500 flex items-center gap-2">
                         {e.student?.user_id || ''} 
+                        {e.student?.program_study && (
+                          <>
+                            <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                            <span>{e.student.program_study}</span>
+                          </>
+                        )}
                         <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                           e.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
@@ -416,11 +533,11 @@ const ManageClassUsers = () => {
                   </div>
                   <button 
                     onClick={() => removeEnrollment(e.id, e.student?.full_name || 'mahasiswa ini')}
-                    disabled={loading}
-                    className="px-3 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl text-sm font-medium transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105 disabled:transform-none flex items-center gap-2"
+                    disabled={loading || removingId === e.id}
+                    className={`px-3 py-2 bg-gradient-to-r ${removingId === e.id ? 'from-gray-400 to-gray-500 cursor-wait' : 'from-red-500 to-red-600 hover:from-red-600 hover:to-red-700'} disabled:from-gray-400 disabled:to-gray-500 text-white rounded-xl text-sm font-medium transition-all duration-300 shadow-md hover:shadow-lg transform ${removingId === e.id ? '' : 'hover:scale-105'} disabled:transform-none flex items-center gap-2`}
                   >
                     <MdDelete className="w-4 h-4" /> 
-                    Hapus
+                    {removingId === e.id ? 'Menghapus...' : 'Hapus'}
                   </button>
                 </div>
                 );

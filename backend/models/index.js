@@ -2,10 +2,25 @@ import { Sequelize } from "sequelize";
 import db from "../config/Database.js";
 
 // Import all models
-import { User } from "./userModel.js";
-import { Courses, CourseClasses, StudentEnrollments } from "./courseManagementModel.js";
-import { AttendanceSessions, StudentAttendances, FaceDatasets, FaceRecognitionLogs } from "./attendanceModel.js";
-import { Notifications, DoorAccessLogs } from "./systemModel.js";
+import { User } from './userModel.js';
+import { 
+    Courses, 
+    CourseClasses, 
+    StudentEnrollments 
+} from './courseManagementModel.js';
+import { 
+    AttendanceSessions, 
+    StudentAttendances, 
+    FaceDatasets, 
+    FaceRecognitionLogs 
+} from './attendanceModel.js';
+import { 
+    Notifications, 
+    DoorAccessLogs 
+} from './systemModel.js';
+
+// Create alias for consistent naming
+const Users = User;
 
 // ===============================================
 // RELATIONSHIPS REMOVED TO PREVENT TABLESPACE ISSUES
@@ -44,11 +59,13 @@ const syncModels = async (options = {}) => {
 
 /**
  * Get user with role-specific details (menggunakan model terpadu)
- * @param {number} userId - User ID
+ * @param {string} userId - User ID (user_id field)
  * @returns {Object} User with role details
  */
 const getUserWithRoleDetails = async (userId) => {
-    const user = await User.findByPk(userId);
+    const user = await Users.findOne({
+        where: { user_id: userId }
+    });
     if (user) {
         return user.toJSON();
     }
@@ -66,7 +83,7 @@ const getCourseClassDetails = async (classId) => {
     if (courseClass) {
         // Manual joins since we removed associations (single room system)
         const course = await Courses.findByPk(courseClass.course_id);
-        const lecturer = await User.findByPk(courseClass.lecturer_id);
+        const lecturer = await Users.findByPk(courseClass.lecturer_id);
         const enrollments = await StudentEnrollments.findAll({
             where: { class_id: classId }
         });
@@ -94,7 +111,7 @@ const getAttendanceSessionDetails = async (sessionId) => {
         // Manual joins since we removed associations (single room system)
         const classInfo = await CourseClasses.findByPk(session.class_id);
         const course = classInfo ? await Courses.findByPk(classInfo.course_id) : null;
-        const creator = await User.findByPk(session.created_by);
+        const creator = await Users.findByPk(session.created_by);
         const attendances = await StudentAttendances.findAll({
             where: { session_id: sessionId }
         });
@@ -121,7 +138,7 @@ export {
     db,
 
     // User Management Models (Unified)
-    User as Users,
+    Users,
 
     // Course Management Models
     Courses,
@@ -149,7 +166,7 @@ export {
 export default {
     db,
     models: {
-        Users: User,
+        Users,
         Courses,
         CourseClasses,
         StudentEnrollments,
