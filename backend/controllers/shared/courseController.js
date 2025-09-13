@@ -766,7 +766,7 @@ export const enrollStudent = async (req, res) => {
             });
         }
 
-        // Check if already enrolled
+        // Check if already enrolled in this specific class
         const existingEnrollment = await StudentEnrollments.findOne({
             where: { class_id, student_id }
         });
@@ -776,6 +776,28 @@ export const enrollStudent = async (req, res) => {
                 success: false,
                 code: 'ALREADY_ENROLLED',
                 message: "Mahasiswa sudah terdaftar di kelas ini"
+            });
+        }
+
+        // Check if student is already enrolled in any other active class
+        const existingActiveEnrollment = await StudentEnrollments.findOne({
+            where: { 
+                student_id,
+                status: { [Op.in]: ['enrolled', 'active'] },
+                class_id: { [Op.ne]: class_id } // exclude current class
+            }
+        });
+
+        if (existingActiveEnrollment) {
+            // Get class and course info manually since we use manual relationships
+            const existingClass = await CourseClasses.findByPk(existingActiveEnrollment.class_id);
+            const existingCourse = existingClass ? await Courses.findByPk(existingClass.course_id) : null;
+            const className = existingClass ? `${existingCourse?.course_code || 'MK'} - ${existingClass.class_name}` : 'kelas lain';
+            
+            return res.status(400).json({
+                success: false,
+                code: 'ALREADY_ENROLLED_OTHER_CLASS',
+                message: `Mahasiswa sudah terdaftar di ${className}. Satu mahasiswa hanya dapat terdaftar di satu kelas aktif.`
             });
         }
 

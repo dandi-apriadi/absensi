@@ -28,6 +28,7 @@ const ManageClassUsers = () => {
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]); // ideally from API users role=student
   const [enrollments, setEnrollments] = useState([]);
+  const [allEnrollments, setAllEnrollments] = useState([]); // All enrollments across all classes
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -108,6 +109,32 @@ const ManageClassUsers = () => {
     }
   };
 
+  const fetchAllEnrollments = async () => {
+    try {
+      console.log('Fetching all enrollments across all classes...');
+      
+      // Get all enrollments across all classes to check for conflicts
+      const enrollmentPromises = classes.map(async (cls) => {
+        try {
+          const res = await api.get(`/api/courses/classes/${cls.id}/enrollments`, { params: { limit: 500 } });
+          return res.data?.data?.enrollments || [];
+        } catch (e) {
+          console.error(`Failed to fetch enrollments for class ${cls.id}:`, e);
+          return [];
+        }
+      });
+      
+      const allClassEnrollments = await Promise.all(enrollmentPromises);
+      const flatEnrollments = allClassEnrollments.flat();
+      
+      console.log('All enrollments loaded:', flatEnrollments.length);
+      setAllEnrollments(flatEnrollments);
+    } catch (e) {
+      console.error('Failed to fetch all enrollments:', e);
+      setAllEnrollments([]);
+    }
+  };
+
   const fetchStudents = async () => {
     try {
       setLoading(true);
@@ -172,6 +199,14 @@ const ManageClassUsers = () => {
     }
   }, [classId]);
 
+  // Fetch all enrollments when classes are loaded
+  useEffect(() => {
+    if (classes.length > 0) {
+      console.log('Classes loaded, fetching all enrollments...');
+      fetchAllEnrollments();
+    }
+  }, [classes]);
+
   // Clear message after 5 seconds
   useEffect(() => {
     if (message) {
@@ -201,7 +236,8 @@ const ManageClassUsers = () => {
       totalStudents: students.length,
       search,
       classId,
-      enrollmentsCount: enrollments.length
+      enrollmentsCount: enrollments.length,
+      allEnrollmentsCount: allEnrollments.length
     });
     
     if (!search && !classId) return students;
@@ -215,17 +251,41 @@ const ManageClassUsers = () => {
       console.log('After search filter:', filtered.length);
     }
     
-    // Filter out already enrolled students
+    // Filter out already enrolled students in current class
     if (classId && enrollments.length > 0) {
       const enrolledStudentIds = enrollments.map(e => e.student_id);
-      console.log('Enrolled student IDs:', enrolledStudentIds);
+      console.log('Enrolled student IDs in current class:', enrolledStudentIds);
       filtered = filtered.filter(student => !enrolledStudentIds.includes(student.user_id));
-      console.log('After enrollment filter:', filtered.length);
+      console.log('After current class enrollment filter:', filtered.length);
+    }
+    
+    // Filter out students already enrolled in any other class (only show students not enrolled anywhere)
+    if (allEnrollments.length > 0) {
+      const allEnrolledStudentIds = allEnrollments
+        .filter(e => e.status === 'enrolled' || e.status === 'active') // Only active enrollments
+        .filter(e => e.class_id !== Number(classId)) // Exclude current class
+        .map(e => e.student_id);
+      
+      console.log('Student IDs enrolled in other classes:', allEnrolledStudentIds);
+      
+      const beforeOtherClassFilter = filtered.length;
+      filtered = filtered.filter(student => !allEnrolledStudentIds.includes(student.user_id));
+      
+      console.log(`After other class enrollment filter: ${beforeOtherClassFilter} -> ${filtered.length}`);
+      
+      // Log which students were filtered out for debugging
+      const filteredOutStudents = students.filter(student => 
+        allEnrolledStudentIds.includes(student.user_id)
+      );
+      if (filteredOutStudents.length > 0) {
+        console.log('Students filtered out (already enrolled elsewhere):', 
+          filteredOutStudents.map(s => `${s.full_name} (${s.user_id})`));
+      }
     }
     
     console.log('Final visible students:', filtered.length);
     return filtered;
-  }, [students, search, classId, enrollments]);
+  }, [students, search, classId, enrollments, allEnrollments]);
 
   const enroll = async (student_user_id) => {
     console.log('=== ENROLL FUNCTION CALLED ===');
@@ -284,6 +344,9 @@ const ManageClassUsers = () => {
       
       // Refresh to replace optimistic temp item with real DB record
       await fetchEnrollments(classId);
+      
+      // Refresh all enrollments to update the global enrollment state
+      await fetchAllEnrollments();
     } catch (e) {
       console.error('Enrollment error:', e);
       
@@ -294,6 +357,7 @@ const ManageClassUsers = () => {
       let friendly = backendMsg || 'Gagal menambahkan mahasiswa';
       
       if (/sudah terdaftar/i.test(friendly)) friendly = 'Mahasiswa sudah terdaftar di kelas ini';
+      if (/hanya dapat terdaftar di satu kelas aktif/i.test(friendly)) friendly = friendly; // Keep the detailed message from backend
       if (/penuh/i.test(friendly)) friendly = 'Kelas sudah penuh';
       if (e.response?.status === 401) friendly = 'Sesi berakhir. Silakan login kembali.';
       if (e.response?.status === 403) friendly = 'Tidak memiliki izin untuk menambah mahasiswa.';
@@ -316,6 +380,9 @@ const ManageClassUsers = () => {
       // Optimistic removal (quick feedback) while refetching
       setEnrollments(prev => prev.filter(e => e.id !== enrollmentId));
       await fetchEnrollments(classId);
+      
+      // Refresh all enrollments to update the global enrollment state
+      await fetchAllEnrollments();
     } catch (e) {
       console.error('Failed to remove enrollment:', e);
       console.error('Error response:', e.response?.data);
@@ -490,7 +557,15 @@ const ManageClassUsers = () => {
                   ) : search ? (
                     <p className="text-gray-500">Tidak ada mahasiswa yang sesuai dengan pencarian</p>
                   ) : (
-                    <p className="text-gray-500">Semua mahasiswa sudah terdaftar di kelas ini</p>
+                    <div className="space-y-2">
+                      <p className="text-gray-500">Tidak ada mahasiswa tersedia untuk ditambahkan</p>
+                      <p className="text-xs text-gray-400">
+                        Mahasiswa sudah terdaftar di kelas ini atau di kelas lain
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        (Satu mahasiswa hanya dapat terdaftar di satu kelas aktif)
+                      </p>
+                    </div>
                   )}
                 </div>
               )}
@@ -585,9 +660,11 @@ const ManageClassUsers = () => {
                 <div className="space-y-2">
                   <p>• <strong>Pilih Kelas:</strong> Gunakan dropdown untuk memilih kelas yang akan dikelola</p>
                   <p>• <strong>Cari Mahasiswa:</strong> Gunakan fitur pencarian untuk menemukan mahasiswa dengan cepat</p>
+                  <p>• <strong>Aturan Pendaftaran:</strong> Satu mahasiswa hanya dapat terdaftar di satu kelas aktif</p>
                 </div>
                 <div className="space-y-2">
                   <p>• <strong>Tambah Mahasiswa:</strong> Klik tombol "Tambah" untuk mendaftarkan mahasiswa ke kelas</p>
+                  <p>• <strong>Hapus Mahasiswa:</strong> Hapus mahasiswa dari kelas untuk memindahkan ke kelas lain</p>
                   <p>• <strong>Refresh Data:</strong> Gunakan tombol refresh untuk memperbarui data terbaru</p>
                 </div>
               </div>
