@@ -658,3 +658,77 @@ export const updateAttendanceStatus = async (req, res) => {
         });
     }
 };
+
+/**
+ * Check user room access for face recognition system
+ */
+export const checkUserRoomAccess = async (req, res) => {
+    try {
+        const { user_id, date } = req.body;
+
+        // Validation
+        if (!user_id) {
+            return res.status(400).json({
+                success: false,
+                message: "user_id diperlukan",
+                data: null
+            });
+        }
+
+        const checkDate = date || new Date().toISOString().split('T')[0];
+
+        // Manual query since we don't use Sequelize associations
+        const [sessions] = await db.query(`
+            SELECT 
+                ats.id as session_id,
+                ats.session_date,
+                ats.start_time,
+                ats.end_time,
+                ats.session_name as topic,
+                cc.class_name,
+                c.course_name
+            FROM attendance_sessions ats
+            JOIN course_classes cc ON ats.class_id = cc.id
+            JOIN courses c ON cc.course_id = c.id
+            JOIN class_students cs ON cc.id = cs.class_id
+            WHERE cs.student_id = :user_id 
+            AND ats.session_date = :session_date
+            AND ats.status = 'active'
+            ORDER BY ats.start_time
+        `, {
+            replacements: { 
+                user_id: user_id, 
+                session_date: checkDate 
+            },
+            type: db.QueryTypes.SELECT
+        });
+
+        if (sessions && sessions.length > 0) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    allowed: true,
+                    sessions: sessions,
+                    reason: 'Has scheduled classes today'
+                }
+            });
+        } else {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    allowed: false,
+                    sessions: [],
+                    reason: 'No scheduled classes today'
+                }
+            });
+        }
+
+    } catch (error) {
+        console.error('Check user room access error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Gagal memeriksa akses ruangan",
+            data: null
+        });
+    }
+};

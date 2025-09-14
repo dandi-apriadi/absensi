@@ -373,3 +373,95 @@ export const getClassAccessDetail = async (req, res) => {
         });
     }
 };
+
+/**
+ * Update class schedule with conflict validation
+ */
+export const updateClassSchedule = async (req, res) => {
+    try {
+        const { classId } = req.params;
+        const { schedule } = req.body;
+
+        // Validate required data
+        if (!schedule || !Array.isArray(schedule)) {
+            return res.status(400).json({
+                success: false,
+                message: "Data jadwal tidak valid"
+            });
+        }
+
+        // Validate schedule format
+        for (const slot of schedule) {
+            if (!slot.day || !slot.start_time || !slot.end_time) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Semua field jadwal (hari, waktu mulai, waktu selesai) harus diisi"
+                });
+            }
+
+            // Validate time format and logic
+            const startTime = new Date(`2000-01-01 ${slot.start_time}`);
+            const endTime = new Date(`2000-01-01 ${slot.end_time}`);
+            
+            if (startTime >= endTime) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Waktu mulai harus lebih awal dari waktu selesai untuk ${slot.day}`
+                });
+            }
+        }
+
+        // Check for internal conflicts (within the same schedule)
+        for (let i = 0; i < schedule.length; i++) {
+            for (let j = i + 1; j < schedule.length; j++) {
+                const slot1 = schedule[i];
+                const slot2 = schedule[j];
+                
+                if (slot1.day === slot2.day) {
+                    const start1 = new Date(`2000-01-01 ${slot1.start_time}`);
+                    const end1 = new Date(`2000-01-01 ${slot1.end_time}`);
+                    const start2 = new Date(`2000-01-01 ${slot2.start_time}`);
+                    const end2 = new Date(`2000-01-01 ${slot2.end_time}`);
+                    
+                    if (start1 < end2 && end1 > start2) {
+                        return res.status(400).json({
+                            success: false,
+                            message: `Terdapat konflik jadwal pada ${slot1.day}: ${slot1.start_time}-${slot1.end_time} dengan ${slot2.start_time}-${slot2.end_time}`
+                        });
+                    }
+                }
+            }
+        }
+
+        // Get the class to verify it exists
+        const courseClass = await CourseClasses.findByPk(classId);
+        if (!courseClass) {
+            return res.status(404).json({
+                success: false,
+                message: "Kelas tidak ditemukan"
+            });
+        }
+
+        // Update class schedule
+        await CourseClasses.update(
+            { 
+                schedule: JSON.stringify(schedule),
+                updated_at: new Date()
+            },
+            { where: { id: classId } }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Jadwal kelas berhasil diperbarui",
+            data: { schedule }
+        });
+
+    } catch (error) {
+        console.error('Update class schedule error:', error);
+        res.status(500).json({
+            success: false,
+            message: "Gagal memperbarui jadwal kelas"
+        });
+    }
+};

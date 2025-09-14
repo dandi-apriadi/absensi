@@ -5,7 +5,8 @@ import {
     getDoorStatus,
     revokeClassAccess,
     grantClassAccess,
-    getClassAccessDetail
+    getClassAccessDetail,
+    updateClassSchedule
 } from '../../controllers/shared/roomAccessController.js';
 
 const router = express.Router();
@@ -16,5 +17,6 @@ router.get('/door/status', verifyUser, getDoorStatus); // Get door system status
 router.get('/classes/:classId/detail', verifyUser, getClassAccessDetail); // Get detailed access info for a class
 router.patch('/classes/:classId/revoke', verifyUser, revokeClassAccess); // Revoke access for a class
 router.patch('/classes/:classId/grant', verifyUser, grantClassAccess); // Grant access for a class
+router.put('/classes/:classId/schedule', verifyUser, updateClassSchedule); // Update class schedule
 
 export default router;

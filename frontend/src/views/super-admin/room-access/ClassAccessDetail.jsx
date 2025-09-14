@@ -15,7 +15,12 @@ import {
     MdWarning,
     MdCheckCircle,
     MdDownload,
-    MdRefresh
+    MdRefresh,
+    MdEdit,
+    MdAdd,
+    MdDelete,
+    MdSave,
+    MdCancel
 } from "react-icons/md";
 import axios from "axios";
 import AOS from "aos";
@@ -33,6 +38,12 @@ const ClassAccessDetail = () => {
     const [classDetail, setClassDetail] = useState(null);
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState(null);
+    
+    // Schedule editing states
+    const [isEditingSchedule, setIsEditingSchedule] = useState(false);
+    const [scheduleData, setScheduleData] = useState([]);
+    const [conflicts, setConflicts] = useState([]);
+    const [savingSchedule, setSavingSchedule] = useState(false);
 
     useEffect(() => {
         AOS.init({ duration: 600, once: true });
@@ -49,7 +60,27 @@ const ClassAccessDetail = () => {
             console.log('Class detail response:', res.data);
             
             if (res.data.success) {
-                setClassDetail(res.data.data);
+                const classData = res.data.data;
+                
+                // Ensure schedule is always an array
+                if (classData.schedule) {
+                    if (typeof classData.schedule === 'string') {
+                        try {
+                            classData.schedule = JSON.parse(classData.schedule);
+                        } catch (e) {
+                            console.error('Error parsing schedule string:', e);
+                            classData.schedule = [];
+                        }
+                    }
+                    if (!Array.isArray(classData.schedule)) {
+                        classData.schedule = [];
+                    }
+                } else {
+                    classData.schedule = [];
+                }
+                
+                console.log('Processed class data with schedule:', classData);
+                setClassDetail(classData);
             }
         } catch (error) {
             console.error('Failed to fetch class detail:', error);
@@ -132,6 +163,121 @@ const ClassAccessDetail = () => {
         document.body.removeChild(link);
         
         setMessage({ type: 'success', text: 'Laporan berhasil diunduh' });
+    };
+
+    // Schedule editing functions
+    const handleEditSchedule = () => {
+        setScheduleData(classDetail.schedule || []);
+        setConflicts([]);
+        setIsEditingSchedule(true);
+    };
+
+    const handleCancelEditSchedule = () => {
+        setIsEditingSchedule(false);
+        setScheduleData([]);
+        setConflicts([]);
+    };
+
+    const addScheduleSlot = () => {
+        const newSlot = {
+            id: Date.now(),
+            day: '',
+            start_time: '',
+            end_time: ''
+        };
+        setScheduleData([...scheduleData, newSlot]);
+    };
+
+    const removeScheduleSlot = (index) => {
+        const newData = scheduleData.filter((_, i) => i !== index);
+        setScheduleData(newData);
+        checkScheduleConflicts(newData);
+    };
+
+    const updateScheduleSlot = (index, field, value) => {
+        const newData = [...scheduleData];
+        newData[index] = { ...newData[index], [field]: value };
+        setScheduleData(newData);
+        checkScheduleConflicts(newData);
+    };
+
+    const checkScheduleConflicts = (schedules) => {
+        const conflicts = [];
+        
+        for (let i = 0; i < schedules.length; i++) {
+            for (let j = i + 1; j < schedules.length; j++) {
+                const schedule1 = schedules[i];
+                const schedule2 = schedules[j];
+                
+                // Check if same day and overlapping time
+                if (schedule1.day === schedule2.day && 
+                    schedule1.day !== '' && 
+                    schedule1.start_time && schedule1.end_time &&
+                    schedule2.start_time && schedule2.end_time) {
+                    
+                    const start1 = new Date(`2000-01-01 ${schedule1.start_time}`);
+                    const end1 = new Date(`2000-01-01 ${schedule1.end_time}`);
+                    const start2 = new Date(`2000-01-01 ${schedule2.start_time}`);
+                    const end2 = new Date(`2000-01-01 ${schedule2.end_time}`);
+                    
+                    if ((start1 < end2 && end1 > start2)) {
+                        conflicts.push({
+                            indices: [i, j],
+                            message: `Konflik jadwal pada ${schedule1.day}: ${schedule1.start_time}-${schedule1.end_time} dengan ${schedule2.start_time}-${schedule2.end_time}`
+                        });
+                    }
+                }
+            }
+        }
+        
+        setConflicts(conflicts);
+        return conflicts.length === 0;
+    };
+
+    const handleSaveSchedule = async () => {
+        // Validate all fields are filled
+        const invalidSlots = scheduleData.filter(slot => 
+            !slot.day || !slot.start_time || !slot.end_time
+        );
+        
+        if (invalidSlots.length > 0) {
+            setMessage({ 
+                type: 'error', 
+                text: 'Semua field jadwal harus diisi dengan lengkap' 
+            });
+            return;
+        }
+
+        // Check for conflicts
+        if (!checkScheduleConflicts(scheduleData)) {
+            setMessage({ 
+                type: 'error', 
+                text: 'Terdapat konflik jadwal. Silakan perbaiki terlebih dahulu.' 
+            });
+            return;
+        }
+
+        setSavingSchedule(true);
+        
+        try {
+            const res = await api.put(`/api/room-access/classes/${classId}/schedule`, {
+                schedule: scheduleData
+            });
+            
+            if (res.data.success) {
+                setMessage({ type: 'success', text: 'Jadwal berhasil diperbarui' });
+                setIsEditingSchedule(false);
+                fetchClassDetail(); // Refresh data
+            }
+        } catch (error) {
+            console.error('Failed to update schedule:', error);
+            setMessage({ 
+                type: 'error', 
+                text: 'Gagal memperbarui jadwal: ' + (error.response?.data?.message || error.message)
+            });
+        } finally {
+            setSavingSchedule(false);
+        }
     };
 
     const formatDate = (dateString) => {
@@ -303,12 +449,21 @@ const ClassAccessDetail = () => {
 
                     {/* Schedule Card */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6" data-aos="fade-up" data-aos-delay="100">
-                        <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                            <MdSchedule className="w-5 h-5 mr-2" />
-                            Jadwal Perkuliahan
-                        </h2>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                                <MdSchedule className="w-5 h-5 mr-2" />
+                                Jadwal Perkuliahan
+                            </h2>
+                            <button
+                                onClick={handleEditSchedule}
+                                className="inline-flex items-center px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                <MdEdit className="w-4 h-4 mr-1" />
+                                Edit Jadwal
+                            </button>
+                        </div>
                         
-                        {classDetail.schedule && classDetail.schedule.length > 0 ? (
+                        {classDetail.schedule && Array.isArray(classDetail.schedule) && classDetail.schedule.length > 0 ? (
                             <div className="space-y-3">
                                 {classDetail.schedule.map((schedule, index) => (
                                     <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -327,6 +482,13 @@ const ClassAccessDetail = () => {
                             <div className="text-center py-8 text-gray-500">
                                 <MdSchedule className="w-12 h-12 mx-auto mb-2 text-gray-300" />
                                 <p>Tidak ada jadwal yang ditetapkan</p>
+                                <button
+                                    onClick={handleEditSchedule}
+                                    className="mt-3 inline-flex items-center px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                >
+                                    <MdAdd className="w-4 h-4 mr-1" />
+                                    Tambah Jadwal
+                                </button>
                             </div>
                         )}
                     </div>
@@ -500,6 +662,153 @@ const ClassAccessDetail = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Schedule Edit Modal */}
+            {isEditingSchedule && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 border-b border-gray-200">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-xl font-semibold text-gray-800">Edit Jadwal Perkuliahan</h3>
+                                <button
+                                    onClick={handleCancelEditSchedule}
+                                    className="text-gray-500 hover:text-gray-700"
+                                >
+                                    <MdCancel className="w-6 h-6" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6">
+                            {/* Conflict warnings */}
+                            {conflicts.length > 0 && (
+                                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                                    <div className="flex items-center mb-2">
+                                        <MdWarning className="w-5 h-5 text-red-600 mr-2" />
+                                        <h4 className="font-medium text-red-800">Konflik Jadwal Ditemukan</h4>
+                                    </div>
+                                    <ul className="text-sm text-red-700 space-y-1">
+                                        {conflicts.map((conflict, index) => (
+                                            <li key={index}>• {conflict.message}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {/* Schedule slots */}
+                            <div className="space-y-4">
+                                {scheduleData.map((schedule, index) => (
+                                    <div key={schedule.id || index} className={`p-4 border rounded-lg ${
+                                        conflicts.some(c => c.indices.includes(index)) 
+                                            ? 'border-red-300 bg-red-50' 
+                                            : 'border-gray-200 bg-gray-50'
+                                    }`}>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h5 className="font-medium text-gray-800">Jadwal {index + 1}</h5>
+                                            {scheduleData.length > 1 && (
+                                                <button
+                                                    onClick={() => removeScheduleSlot(index)}
+                                                    className="text-red-600 hover:text-red-800 p-1"
+                                                >
+                                                    <MdDelete className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            {/* Day selection */}
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Hari
+                                                </label>
+                                                <select
+                                                    value={schedule.day || ''}
+                                                    onChange={(e) => updateScheduleSlot(index, 'day', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                >
+                                                    <option value="">Pilih Hari</option>
+                                                    <option value="Senin">Senin</option>
+                                                    <option value="Selasa">Selasa</option>
+                                                    <option value="Rabu">Rabu</option>
+                                                    <option value="Kamis">Kamis</option>
+                                                    <option value="Jumat">Jumat</option>
+                                                    <option value="Sabtu">Sabtu</option>
+                                                    <option value="Minggu">Minggu</option>
+                                                </select>
+                                            </div>
+
+                                            {/* Start time */}
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Waktu Mulai
+                                                </label>
+                                                <input
+                                                    type="time"
+                                                    value={schedule.start_time || ''}
+                                                    onChange={(e) => updateScheduleSlot(index, 'start_time', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                />
+                                            </div>
+
+                                            {/* End time */}
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Waktu Selesai
+                                                </label>
+                                                <input
+                                                    type="time"
+                                                    value={schedule.end_time || ''}
+                                                    onChange={(e) => updateScheduleSlot(index, 'end_time', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Add schedule button */}
+                            <div className="mt-4">
+                                <button
+                                    onClick={addScheduleSlot}
+                                    className="inline-flex items-center px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                    <MdAdd className="w-4 h-4 mr-1" />
+                                    Tambah Jadwal
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal footer */}
+                        <div className="p-6 border-t border-gray-200 flex items-center justify-end space-x-3">
+                            <button
+                                onClick={handleCancelEditSchedule}
+                                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                disabled={savingSchedule}
+                            >
+                                Batal
+                            </button>
+                            <button
+                                onClick={handleSaveSchedule}
+                                disabled={savingSchedule || conflicts.length > 0}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center"
+                            >
+                                {savingSchedule ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                        Menyimpan...
+                                    </>
+                                ) : (
+                                    <>
+                                        <MdSave className="w-4 h-4 mr-1" />
+                                        Simpan Jadwal
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
