@@ -221,7 +221,6 @@ class FaceAttendanceApp:
         self.create_attendance_tab()
         self.create_dataset_tab()
         self.create_management_tab()
-        self.create_reports_tab()
         
     def create_attendance_tab(self):
         # Attendance tab
@@ -748,41 +747,6 @@ class FaceAttendanceApp:
         )
         refresh_list_btn.pack(side="left", padx=10, pady=10)
         
-    def create_reports_tab(self):
-        # Reports tab
-        reports_frame = ctk.CTkFrame(self.notebook)
-        self.notebook.add(reports_frame, text="Laporan")
-        
-        # Date selection
-        date_frame = ctk.CTkFrame(reports_frame)
-        date_frame.pack(fill="x", padx=10, pady=10)
-        
-        ctk.CTkLabel(date_frame, text="Pilih Tanggal:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
-        
-        self.date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
-        date_entry = ctk.CTkEntry(date_frame, textvariable=self.date_var, width=200)
-        date_entry.pack(anchor="w", padx=10, pady=(0, 10))
-        
-        generate_btn = ctk.CTkButton(
-            date_frame,
-            text="Generate Report",
-            command=self.generate_report,
-            width=150
-        )
-        generate_btn.pack(anchor="w", padx=10, pady=10)
-        
-        # Report display
-        report_frame = ctk.CTkFrame(reports_frame)
-        report_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        self.report_tree = ttk.Treeview(report_frame, columns=("Name", "ClockIn", "ClockOut", "Status", "Method"), show="headings")
-        self.report_tree.heading("Name", text="Nama")
-        self.report_tree.heading("ClockIn", text="Masuk")
-        self.report_tree.heading("ClockOut", text="Keluar")
-        self.report_tree.heading("Status", text="Status")
-        self.report_tree.heading("Method", text="Metode")
-        
-        self.report_tree.pack(fill="both", expand=True, padx=10, pady=10)
         
     def get_employee_list(self):
         """Get list of employees for dropdown"""
@@ -1180,45 +1144,6 @@ class FaceAttendanceApp:
         except Exception as e:
             print(f"Error refreshing models list: {e}")
             # Don't show error dialog, just log it
-            
-    def generate_report(self):
-        """Generate attendance report for selected date"""
-        try:
-            selected_date = self.date_var.get()
-            
-            # Clear existing items
-            for item in self.report_tree.get_children():
-                self.report_tree.delete(item)
-                
-            query = """
-            SELECT u.fullname, sa.check_in_time, sa.check_out_time, sa.status, sa.attendance_method
-            FROM student_attendances sa
-            JOIN users u ON sa.student_id = u.user_id
-            WHERE DATE(sa.check_in_time) = %s
-            ORDER BY sa.check_in_time
-            """
-            
-            results = simple_db.execute_query(query, (selected_date,))
-            
-            if results:
-                for row in results:
-                    clock_in = row['check_in_time'].strftime("%H:%M") if row['check_in_time'] else "-"
-                    clock_out = row['check_out_time'].strftime("%H:%M") if row['check_out_time'] else "-"
-                    method = row['attendance_method'] or "manual"
-                    
-                    self.report_tree.insert("", "end", values=(
-                        row['fullname'],
-                        clock_in,
-                        clock_out,
-                        row['status'],
-                        method
-                    ))
-            else:
-                messagebox.showinfo("Info", "Tidak ada data untuk tanggal tersebut")
-                
-        except Exception as e:
-            print(f"Error generating report: {e}")
-            messagebox.showerror("Error", f"Error generating report: {e}")
             
     def run(self):
         # Initialize data
