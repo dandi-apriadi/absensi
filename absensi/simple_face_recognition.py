@@ -215,8 +215,7 @@ class SimpleFaceRecognition:
             query = """
             SELECT ft.employee_id, ft.model_path, u.fullname 
             FROM face_training ft
-            JOIN employees e ON ft.employee_id = e.employee_id
-            JOIN users u ON e.user_id = u.user_id
+            JOIN users u ON ft.employee_id = u.user_id
             WHERE ft.status = 'active'
             """
             
@@ -301,8 +300,8 @@ class SimpleFaceRecognition:
             # Check if already marked today
             today = datetime.now().date()
             check_query = """
-            SELECT attendance_id FROM attendance 
-            WHERE employee_id = %s AND DATE(date) = %s
+            SELECT id FROM student_attendances 
+            WHERE student_id = %s AND DATE(check_in_time) = %s
             """
             
             existing = simple_db.execute_query(check_query, (employee_id, today))
@@ -310,25 +309,30 @@ class SimpleFaceRecognition:
             if existing:
                 return False, "Attendance already marked for today"
                 
+            # Get active session for today (we need session_id for student_attendances)
+            session_query = """
+            SELECT id as session_id FROM attendance_sessions 
+            WHERE DATE(start_time) = %s AND status = 'active'
+            ORDER BY start_time DESC
+            LIMIT 1
+            """
+            
+            session_result = simple_db.execute_query(session_query, (today,))
+            session_id = session_result[0]['session_id'] if session_result else 1  # Default to 1 if no active session
+                
             # Mark new attendance
             current_time = datetime.now()
             
             insert_query = """
-            INSERT INTO attendance (
-                employee_id, date, clock_in, status, 
-                verification_method, verification_data, created_at, updated_at
+            INSERT INTO student_attendances (
+                session_id, student_id, status, check_in_time, 
+                attendance_method, confidence_score, created_at, updated_at
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """
             
-            verification_data = json.dumps({
-                'confidence_score': float(confidence_score),
-                'recognition_time': current_time.isoformat(),
-                'method': 'opencv_face_recognition'
-            })
-            
             params = (
-                employee_id, current_time, current_time, 'present',
-                'face', verification_data, current_time, current_time
+                session_id, employee_id, 'present', current_time,
+                'face_recognition', confidence_score, current_time, current_time
             )
             
             result = simple_db.execute_query(insert_query, params)
@@ -348,12 +352,13 @@ class SimpleFaceRecognition:
         """Log face recognition attempt"""
         try:
             query = """
-            INSERT INTO face_attendance_log (
-                employee_id, recognition_confidence, recognition_status, attempt_time
-            ) VALUES (%s, %s, %s, %s)
+            INSERT INTO face_recognition_logs (
+                user_id, confidence_score, recognition_status, timestamp, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s)
             """
             
-            params = (employee_id, confidence_score, status, datetime.now())
+            current_time = datetime.now()
+            params = (employee_id, confidence_score, status, current_time, current_time, current_time)
             simple_db.execute_query(query, params)
             
         except Exception as e:

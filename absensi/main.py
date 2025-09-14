@@ -202,28 +202,15 @@ class FaceAttendanceApp:
     def get_current_employee_info(self):
         """Get employee info for the currently logged in user"""
         try:
-            query = """
-            SELECT e.employee_id, u.fullname
-            FROM employees e
-            JOIN users u ON e.user_id = u.user_id
-            WHERE u.user_id = %s AND u.status = 'active'
-            """
-            
-            results = simple_db.execute_query(query, (self.current_user['user_id'],))
-            
-            if results:
-                self.current_employee_id = results[0]['employee_id']
-                self.current_employee_name = results[0]['fullname']
-                print(f"[EMPLOYEE INFO] Employee ID: {self.current_employee_id}, Name: {self.current_employee_name}")
-            else:
-                print(f"[EMPLOYEE INFO] No employee record found for user: {self.current_user['fullname']}")
-                self.current_employee_id = None
-                self.current_employee_name = self.current_user['fullname']
+            # Since we don't have employees table, use user_id directly as employee_id
+            self.current_employee_id = self.current_user['user_id']
+            self.current_employee_name = self.current_user['fullname']
+            print(f"[USER INFO] User ID: {self.current_employee_id}, Name: {self.current_employee_name}")
                 
         except Exception as e:
-            print(f"[EMPLOYEE INFO] Error getting employee info: {e}")
+            print(f"[USER INFO] Error getting user info: {e}")
             self.current_employee_id = None
-            self.current_employee_name = self.current_user['fullname']
+            self.current_employee_name = self.current_user['fullname'] if self.current_user else "Unknown"
         
     def setup_ui(self):
         # Create main notebook for tabs
@@ -801,17 +788,16 @@ class FaceAttendanceApp:
         """Get list of employees for dropdown"""
         try:
             query = """
-            SELECT e.employee_id, u.fullname 
-            FROM employees e
-            JOIN users u ON e.user_id = u.user_id
-            WHERE u.status = 'active'
+            SELECT u.user_id, u.fullname 
+            FROM users u
+            WHERE u.status = 'active' AND u.role IN ('student', 'lecturer')
             ORDER BY u.fullname
             """
             
             results = simple_db.execute_query(query)
             
             if results:
-                return [f"{row['employee_id']} - {row['fullname']}" for row in results]
+                return [f"{row['user_id']} - {row['fullname']}" for row in results]
             else:
                 return []
                 
@@ -1127,19 +1113,18 @@ class FaceAttendanceApp:
             # Get today's attendance
             today = datetime.now().date()
             query = """
-            SELECT u.fullname, a.clock_in, a.status
-            FROM attendance a
-            JOIN employees e ON a.employee_id = e.employee_id
-            JOIN users u ON e.user_id = u.user_id
-            WHERE DATE(a.date) = %s
-            ORDER BY a.clock_in DESC
+            SELECT u.fullname, sa.check_in_time, sa.status
+            FROM student_attendances sa
+            JOIN users u ON sa.student_id = u.user_id
+            WHERE DATE(sa.check_in_time) = %s
+            ORDER BY sa.check_in_time DESC
             """
             
             results = simple_db.execute_query(query, (today,))
             
             if results:
                 for row in results:
-                    clock_in = row['clock_in'].strftime("%H:%M") if row['clock_in'] else "-"
+                    clock_in = row['check_in_time'].strftime("%H:%M") if row['check_in_time'] else "-"
                     self.attendance_tree.insert("", "end", values=(
                         row['fullname'],
                         clock_in,
@@ -1206,21 +1191,20 @@ class FaceAttendanceApp:
                 self.report_tree.delete(item)
                 
             query = """
-            SELECT u.fullname, a.clock_in, a.clock_out, a.status, a.verification_method
-            FROM attendance a
-            JOIN employees e ON a.employee_id = e.employee_id
-            JOIN users u ON e.user_id = u.user_id
-            WHERE DATE(a.date) = %s
-            ORDER BY a.clock_in
+            SELECT u.fullname, sa.check_in_time, sa.check_out_time, sa.status, sa.attendance_method
+            FROM student_attendances sa
+            JOIN users u ON sa.student_id = u.user_id
+            WHERE DATE(sa.check_in_time) = %s
+            ORDER BY sa.check_in_time
             """
             
             results = simple_db.execute_query(query, (selected_date,))
             
             if results:
                 for row in results:
-                    clock_in = row['clock_in'].strftime("%H:%M") if row['clock_in'] else "-"
-                    clock_out = row['clock_out'].strftime("%H:%M") if row['clock_out'] else "-"
-                    method = row['verification_method'] or "manual"
+                    clock_in = row['check_in_time'].strftime("%H:%M") if row['check_in_time'] else "-"
+                    clock_out = row['check_out_time'].strftime("%H:%M") if row['check_out_time'] else "-"
+                    method = row['attendance_method'] or "manual"
                     
                     self.report_tree.insert("", "end", values=(
                         row['fullname'],
