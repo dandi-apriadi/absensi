@@ -77,15 +77,11 @@ LEARNING_RATE=0.001
 ```
 
 ### 4. Setup Database
-Jalankan script setup untuk membuat tabel dan admin user:
+Pastikan database MySQL/MariaDB sudah berjalan dan telah tersedia database `elearning`.
 
-```bash
-python setup_database.py
-```
-
-Script ini akan:
-- Membuat tabel yang diperlukan untuk face recognition
-- Membuat user admin default (admin@system.local / admin123)
+**Tabel yang diperlukan akan dibuat otomatis saat aplikasi pertama kali dijalankan:**
+- `face_training`: Menyimpan model dan data training wajah
+- Admin user sudah tersedia: `admin@system.local` / `admin123`
 
 ### 5. Jalankan Aplikasi
 ```bash

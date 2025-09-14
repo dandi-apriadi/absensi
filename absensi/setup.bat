@@ -54,44 +54,25 @@ echo ✅ Dependencies installed successfully
 REM Check if .env exists
 if not exist ".env" (
     echo.
-    echo 📝 Creating .env file from template...
-    if exist ".env.example" (
-        copy ".env.example" ".env"
-        echo ✅ .env file created
-        echo ⚠️  Please edit .env file with your database configuration
-    ) else (
-        echo ⚠️  .env.example not found, creating basic .env file...
-        echo # Database Configuration > .env
-        echo DB_HOST=localhost >> .env
-        echo DB_USER=root >> .env
-        echo DB_PASSWORD= >> .env
-        echo DB_NAME=elearning >> .env
-        echo. >> .env
-        echo # Backend API Configuration >> .env
-        echo BACKEND_API_URL=http://localhost:5000 >> .env
-        echo ✅ Basic .env file created
-    )
+    echo 📝 Creating .env file...
+    echo ⚠️  Creating basic .env file...
+    echo # Database Configuration > .env
+    echo DB_HOST=localhost >> .env
+    echo DB_USER=root >> .env
+    echo DB_PASSWORD= >> .env
+    echo DB_NAME=elearning >> .env
+    echo. >> .env
+    echo # Backend API Configuration >> .env
+    echo BACKEND_API_URL=http://localhost:5000 >> .env
+    echo. >> .env
+    echo # App Configuration >> .env
+    echo DATASET_PATH=./datasets >> .env
+    echo TEMP_PATH=./temp >> .env
+    echo CAMERA_INDEX=0 >> .env
+    echo RECOGNITION_THRESHOLD=0.6 >> .env
+    echo ✅ Basic .env file created
 ) else (
     echo ✅ .env file already exists
-)
-
-REM Ask if user wants to setup database
-echo.
-echo 🗄️  Do you want to setup the database now? (y/n)
-set /p setup_db=
-if /i "%setup_db%"=="y" (
-    echo.
-    echo 🔧 Setting up database...
-    python setup_database.py
-    if errorlevel 1 (
-        echo ❌ Database setup failed
-        echo Please check your database configuration in .env file
-    ) else (
-        echo ✅ Database setup completed
-    )
-) else (
-    echo ⚠️  Database setup skipped
-    echo You can run it later with: python setup_database.py
 )
 
 echo.
@@ -101,8 +82,7 @@ echo ========================================
 echo.
 echo Next steps:
 echo 1. Edit .env file with your database configuration
-echo 2. Run database setup: python setup_database.py
-echo 3. Start the application: python main.py
+echo 2. Start the application: python main.py
 echo.
 echo Default admin credentials:
 echo Email: admin@system.local
