@@ -30,13 +30,11 @@ class SimpleFaceRecognition:
         try:
             # Test if tables exist
             simple_db.execute_query("SELECT 1 FROM face_training LIMIT 1")
-            simple_db.execute_query("SELECT 1 FROM face_attendance_log LIMIT 1")
             print("Face recognition tables verified")
         except:
             print("Face recognition tables may need to be created manually")
             # You can uncomment these lines if you want to auto-create tables:
             # self.create_face_training_table()
-            # self.create_face_attendance_log_table()
         
     def capture_face_dataset(self, employee_id, employee_name, num_samples=100):
         """Capture multiple face images for training dataset"""

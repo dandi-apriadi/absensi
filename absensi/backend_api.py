@@ -27,32 +27,9 @@ class BackendAPI:
         if date is None:
             date = datetime.now().strftime('%Y-%m-%d')
         
-        # If requests is not available, use fallback immediately
-        if not REQUESTS_AVAILABLE or self.session is None:
-            print("[BACKEND API] Using database fallback (requests not available)")
-            return self._check_access_fallback(user_id, date)
-            
-        try:
-            # Check if user has any classes scheduled for today
-            url = f"{self.base_url}/api/attendance/check-access"
-            data = {
-                'user_id': user_id,
-                'date': date
-            }
-            
-            response = self.session.post(url, json=data, timeout=10)
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result.get('data', None)
-            else:
-                print(f"[BACKEND API] Error checking access: {response.status_code}")
-                return None
-                
-        except Exception as e:
-            print(f"[BACKEND API] Request error: {e}")
-            # Fallback to database check if backend is unavailable
-            return self._check_access_fallback(user_id, date)
+        # Use fallback database check immediately since backend requires auth
+        print(f"[BACKEND API] Using database fallback for user {user_id} on {date}")
+        return self._check_access_fallback(user_id, date)
     
     def _check_access_fallback(self, user_id, date):
         """
@@ -75,10 +52,10 @@ class BackendAPI:
             FROM attendance_sessions ats
             JOIN course_classes cc ON ats.class_id = cc.id
             JOIN courses c ON cc.course_id = c.id
-            JOIN class_students cs ON cc.id = cs.class_id
-            WHERE cs.student_id = %s 
+            JOIN student_enrollments se ON cc.id = se.class_id
+            WHERE se.student_id = %s 
             AND ats.session_date = %s
-            AND ats.status = 'active'
+            AND ats.status IN ('scheduled', 'ongoing')
             ORDER BY ats.start_time
             """
             
