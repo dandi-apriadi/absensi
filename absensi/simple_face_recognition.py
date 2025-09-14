@@ -127,13 +127,29 @@ class SimpleFaceRecognition:
         faces = []
         labels = []
         
+        # Convert employee_id to integer for OpenCV
+        try:
+            # Extract numeric part from employee_id if it contains letters
+            import re
+            numeric_id = re.findall(r'\d+', str(employee_id))
+            if numeric_id:
+                label_id = int(numeric_id[0])
+            else:
+                # Fallback: use hash of employee_id and take modulo
+                label_id = abs(hash(str(employee_id))) % 10000
+        except:
+            # Ultimate fallback
+            label_id = 1
+        
+        print(f"Using label ID: {label_id} for employee: {employee_id}")
+        
         for image_path in captured_images:
             try:
                 # Load image as grayscale
                 image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
                 if image is not None:
                     faces.append(image)
-                    labels.append(employee_id)
+                    labels.append(label_id)  # Use integer label
                     
             except Exception as e:
                 print(f"Error processing {image_path}: {e}")
@@ -145,7 +161,11 @@ class SimpleFaceRecognition:
             
         # Train the recognizer
         try:
-            self.recognizer.train(faces, np.array(labels))
+            # Convert to numpy array with correct dtype
+            labels_array = np.array(labels, dtype=np.int32)
+            print(f"Training with {len(faces)} faces and labels dtype: {labels_array.dtype}")
+            
+            self.recognizer.train(faces, labels_array)
             
             # Save model
             model_filename = f"employee_{employee_id}_model.yml"
@@ -158,7 +178,8 @@ class SimpleFaceRecognition:
                 'model_path': model_path,
                 'trained_images': captured_images,
                 'training_date': datetime.now().isoformat(),
-                'num_samples': len(faces)
+                'num_samples': len(faces),
+                'label_id': label_id  # Store the numeric label used
             }
             
             # Convert model data to binary for database storage

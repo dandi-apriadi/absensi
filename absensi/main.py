@@ -11,6 +11,7 @@ from simple_database import simple_db
 from simple_face_recognition import SimpleFaceRecognition
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from backend_api import backend_api
 
 class LoginWindow:
     def __init__(self):
@@ -119,11 +120,11 @@ class LoginWindow:
         try:
             print("[LOGIN DEBUG] Executing login query...")
             
-            # Query to verify user credentials
+            # Query to verify user credentials - check the correct table based on backend models
             query = """
-            SELECT user_id, fullname, role, password 
+            SELECT user_id, fullname, role, password, status 
             FROM users 
-            WHERE email = %s AND status = 'active'
+            WHERE email = %s AND status = 'active' AND role IN ('super-admin', 'lecturer')
             """
             
             print(f"[LOGIN DEBUG] Executing query with email: {email}")
@@ -136,6 +137,11 @@ class LoginWindow:
                 print(f"[LOGIN DEBUG] Stored password hash: {user['password'][:50]}...")
                 print(f"[LOGIN DEBUG] Input password: '{password}'")
                 
+                # Check if user is admin or lecturer (allowed roles)
+                if user['role'] not in ['super-admin', 'lecturer']:
+                    print("[LOGIN DEBUG] ❌ Access denied - User does not have admin privileges")
+                    return False
+                
                 try:
                     # Verify password using Argon2
                     ph.verify(user['password'], password)
@@ -144,8 +150,9 @@ class LoginWindow:
                     # Store user session
                     self.current_user = {
                         'user_id': user['user_id'],
-                        'fullname': user['fullname'],
-                        'role': user['role']
+                        'fullname': user['fullname'],  # Note: using 'fullname' from backend model
+                        'role': user['role'],
+                        'status': user['status']
                     }
                     return True
                     
@@ -156,7 +163,7 @@ class LoginWindow:
                     print(f"[LOGIN DEBUG] ❌ Password verification error: {verify_error}")
                     return False
             else:
-                print("[LOGIN DEBUG] ❌ No user found with that email or user is not active")
+                print("[LOGIN DEBUG] ❌ No authorized user found with that email or user is not active/admin")
                     
             return False
             
@@ -316,8 +323,114 @@ class FaceAttendanceApp:
         dataset_frame = ctk.CTkFrame(self.notebook)
         self.notebook.add(dataset_frame, text="Kelola Dataset")
         
+        # Check if user is admin
+        is_admin = self.current_user.get('role') in ['super-admin', 'lecturer']
+        
+        if is_admin:
+            # Admin interface - can manage datasets for all users
+            self.create_admin_dataset_interface(dataset_frame)
+        else:
+            # Regular user interface - can only manage own dataset
+            self.create_user_dataset_interface(dataset_frame)
+    
+    def create_admin_dataset_interface(self, parent_frame):
+        """Admin interface for managing face datasets of all users"""
+        # User selection section
+        user_select_frame = ctk.CTkFrame(parent_frame)
+        user_select_frame.pack(fill="x", padx=10, pady=10)
+        
+        ctk.CTkLabel(user_select_frame, text="Pilih User untuk Kelola Dataset:", 
+                    font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # User selection
+        user_frame = ctk.CTkFrame(user_select_frame)
+        user_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Dropdown for users
+        self.selected_user_var = tk.StringVar()
+        self.user_dropdown = ctk.CTkComboBox(
+            user_frame,
+            values=["Select User..."],
+            variable=self.selected_user_var,
+            command=self.on_user_selected,
+            width=300
+        )
+        self.user_dropdown.pack(side="left", padx=10, pady=10)
+        
+        # Refresh users button
+        refresh_users_btn = ctk.CTkButton(
+            user_frame,
+            text="Refresh Users",
+            command=self.load_users_list,
+            width=150
+        )
+        refresh_users_btn.pack(side="left", padx=10, pady=10)
+        
+        # Selected user info
+        self.selected_user_info = ctk.CTkLabel(
+            user_select_frame,
+            text="Pilih user dari dropdown di atas",
+            font=ctk.CTkFont(size=12)
+        )
+        self.selected_user_info.pack(anchor="w", padx=10, pady=(0, 10))
+        
+        # Dataset management buttons
+        buttons_frame = ctk.CTkFrame(parent_frame)
+        buttons_frame.pack(fill="x", padx=10, pady=10)
+        
+        self.admin_capture_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Ambil Dataset Wajah",
+            command=self.admin_capture_dataset,
+            width=200,
+            height=40,
+            state="disabled"
+        )
+        self.admin_capture_btn.pack(side="left", padx=10, pady=10)
+        
+        self.admin_train_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Train Model",
+            command=self.admin_train_model,
+            width=150,
+            height=40,
+            state="disabled"
+        )
+        self.admin_train_btn.pack(side="left", padx=10, pady=10)
+        
+        self.admin_delete_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Hapus Model",
+            command=self.admin_delete_model,
+            width=150,
+            height=40,
+            fg_color="red",
+            state="disabled"
+        )
+        self.admin_delete_btn.pack(side="left", padx=10, pady=10)
+        
+        # Check room access button
+        self.check_access_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Cek Akses Ruangan",
+            command=self.check_user_room_access,
+            width=150,
+            height=40,
+            fg_color="green",
+            state="disabled"
+        )
+        self.check_access_btn.pack(side="left", padx=10, pady=10)
+        
+        # Process log
+        self.create_process_log_section(parent_frame)
+        
+        # Load users on initialization
+        self.load_users_list()
+    
+    def create_user_dataset_interface(self, parent_frame):
+        """Regular user interface for managing own dataset"""
         # User info section
-        user_info_frame = ctk.CTkFrame(dataset_frame)
+        user_info_frame = ctk.CTkFrame(parent_frame)
         user_info_frame.pack(fill="x", padx=10, pady=10)
         
         # Current user display
@@ -345,7 +458,7 @@ class FaceAttendanceApp:
             warning_label.pack(anchor="w", padx=10, pady=(0, 10))
         
         # Buttons frame
-        buttons_frame = ctk.CTkFrame(dataset_frame)
+        buttons_frame = ctk.CTkFrame(parent_frame)
         buttons_frame.pack(fill="x", padx=10, pady=10)
         
         capture_btn = ctk.CTkButton(
@@ -378,14 +491,230 @@ class FaceAttendanceApp:
         )
         delete_btn.pack(side="left", padx=10, pady=10)
         
+        # Process log
+        self.create_process_log_section(parent_frame)
+    
+    def create_process_log_section(self, parent_frame):
+        """Create process log section"""
         # Progress and logs
-        progress_frame = ctk.CTkFrame(dataset_frame)
+        progress_frame = ctk.CTkFrame(parent_frame)
         progress_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
         ctk.CTkLabel(progress_frame, text="Log Proses:", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
         
         self.process_log = ctk.CTkTextbox(progress_frame, width=800, height=400)
         self.process_log.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    def load_users_list(self):
+        """Load list of users for admin interface"""
+        try:
+            query = """
+            SELECT user_id, fullname, role, email, status
+            FROM users 
+            WHERE status = 'active'
+            ORDER BY fullname
+            """
+            
+            results = simple_db.execute_query(query)
+            
+            if results:
+                user_options = []
+                self.users_data = {}
+                
+                for user in results:
+                    display_name = f"{user['fullname']} ({user['role']}) - {user['email']}"
+                    user_options.append(display_name)
+                    self.users_data[display_name] = user
+                
+                self.user_dropdown.configure(values=user_options)
+                self.log_message(f"Loaded {len(user_options)} users")
+            else:
+                self.log_message("No users found")
+                
+        except Exception as e:
+            self.log_message(f"Error loading users: {e}")
+    
+    def on_user_selected(self, selected_display_name):
+        """Handle user selection from dropdown"""
+        if selected_display_name and selected_display_name in self.users_data:
+            user = self.users_data[selected_display_name]
+            self.selected_user_data = user
+            
+            # Update info display
+            info_text = f"👤 {user['fullname']} (ID: {user['user_id']}) - {user['role']}"
+            self.selected_user_info.configure(text=info_text)
+            
+            # Enable buttons
+            self.admin_capture_btn.configure(state="normal")
+            self.admin_train_btn.configure(state="normal")
+            self.admin_delete_btn.configure(state="normal")
+            self.check_access_btn.configure(state="normal")
+            
+            self.log_message(f"Selected user: {user['fullname']}")
+        else:
+            # Disable buttons
+            self.admin_capture_btn.configure(state="disabled")
+            self.admin_train_btn.configure(state="disabled")
+            self.admin_delete_btn.configure(state="disabled")
+            self.check_access_btn.configure(state="disabled")
+    
+    def check_user_room_access(self):
+        """Check if selected user has room access today"""
+        if not hasattr(self, 'selected_user_data'):
+            self.log_message("No user selected")
+            return
+        
+        user = self.selected_user_data
+        user_id = user['user_id']
+        
+        self.log_message(f"Checking room access for {user['fullname']}...")
+        
+        try:
+            # Check access via backend API
+            access_info = backend_api.check_user_room_access(user_id)
+            
+            if access_info:
+                if access_info.get('allowed', False):
+                    self.log_message(f"✅ {user['fullname']} DIIZINKAN masuk ruangan")
+                    self.log_message(f"Alasan: {access_info.get('reason', 'N/A')}")
+                    
+                    sessions = access_info.get('sessions', [])
+                    if sessions:
+                        self.log_message(f"Jadwal hari ini:")
+                        for session in sessions:
+                            self.log_message(f"  - {session.get('course_name', 'N/A')} "
+                                           f"({session.get('start_time', 'N/A')}-{session.get('end_time', 'N/A')})")
+                else:
+                    self.log_message(f"❌ {user['fullname']} TIDAK DIIZINKAN masuk ruangan")
+                    self.log_message(f"Alasan: {access_info.get('reason', 'N/A')}")
+            else:
+                self.log_message(f"⚠️ Tidak dapat memverifikasi akses untuk {user['fullname']}")
+                
+        except Exception as e:
+            self.log_message(f"Error checking room access: {e}")
+    
+    def admin_capture_dataset(self):
+        """Admin capture dataset for selected user"""
+        if not hasattr(self, 'selected_user_data'):
+            self.log_message("No user selected")
+            return
+        
+        user = self.selected_user_data
+        self.log_message(f"Starting dataset capture for {user['fullname']}...")
+        
+        # Run capture in separate thread
+        thread = threading.Thread(
+            target=self._capture_dataset_thread,
+            args=(user['user_id'], user['fullname']),
+            daemon=True
+        )
+        thread.start()
+    
+    def admin_train_model(self):
+        """Admin train model for selected user"""
+        if not hasattr(self, 'selected_user_data'):
+            self.log_message("No user selected")
+            return
+        
+        user = self.selected_user_data
+        self.log_message(f"Starting model training for {user['fullname']}...")
+        
+        # Run training in separate thread
+        thread = threading.Thread(
+            target=self._train_model_thread,
+            args=(user['user_id'], user['fullname']),
+            daemon=True
+        )
+        thread.start()
+    
+    def admin_delete_model(self):
+        """Admin delete model for selected user"""
+        if not hasattr(self, 'selected_user_data'):
+            self.log_message("No user selected")
+            return
+        
+        user = self.selected_user_data
+        
+        # Confirm deletion
+        result = messagebox.askyesno(
+            "Konfirmasi Hapus",
+            f"Apakah Anda yakin ingin menghapus model wajah untuk {user['fullname']}?"
+        )
+        
+        if result:
+            self.log_message(f"Deleting model for {user['fullname']}...")
+            # Implementation for deleting model
+            # TODO: Add delete model functionality
+    
+    def _capture_dataset_thread(self, user_id, user_name):
+        """Thread method for capturing dataset"""
+        try:
+            self.log_message(f"Memulai capture dataset untuk {user_name}...")
+            
+            captured_images = self.face_system.capture_face_dataset(user_id, user_name)
+            
+            if captured_images:
+                self.log_message(f"Dataset berhasil dicapture: {len(captured_images)} gambar")
+                # Auto-train after capture
+                self.log_message("Memulai training model...")
+                success = self.face_system.train_face_model(user_id, captured_images)
+                
+                if success:
+                    self.log_message("Model berhasil dilatih!")
+                    self.window.after(0, lambda: messagebox.showinfo("Sukses", f"Dataset untuk {user_name} berhasil dicapture dan model dilatih!"))
+                else:
+                    self.log_message("Gagal melatih model")
+                    self.window.after(0, lambda: messagebox.showerror("Error", "Gagal melatih model"))
+            else:
+                self.log_message("Gagal capture dataset")
+                self.window.after(0, lambda: messagebox.showerror("Error", "Gagal capture dataset"))
+                
+        except Exception as e:
+            self.log_message(f"Error in capture dataset: {e}")
+    
+    def _train_model_thread(self, user_id, user_name):
+        """Thread method for training model"""
+        try:
+            # Check if dataset exists
+            dataset_dir = f"datasets/employee_{user_id}"
+            if not os.path.exists(dataset_dir):
+                self.log_message(f"Dataset tidak ditemukan untuk {user_name}")
+                self.window.after(0, lambda: messagebox.showerror("Error", f"Dataset tidak ditemukan untuk {user_name}. Capture dataset terlebih dahulu."))
+                return
+            
+            # Get images from dataset directory
+            import glob
+            image_files = glob.glob(os.path.join(dataset_dir, "*.jpg"))
+            
+            if len(image_files) == 0:
+                self.log_message(f"Tidak ada gambar ditemukan di dataset {user_name}")
+                self.window.after(0, lambda: messagebox.showerror("Error", "Tidak ada gambar ditemukan di dataset"))
+                return
+            
+            self.log_message(f"Training model untuk {user_name} dengan {len(image_files)} gambar...")
+            success = self.face_system.train_face_model(user_id, image_files)
+            
+            if success:
+                self.log_message("Model berhasil dilatih!")
+                self.window.after(0, lambda: messagebox.showinfo("Sukses", f"Model untuk {user_name} berhasil dilatih!"))
+            else:
+                self.log_message("Gagal melatih model")
+                self.window.after(0, lambda: messagebox.showerror("Error", "Gagal melatih model"))
+                
+        except Exception as e:
+            self.log_message(f"Error in train model: {e}")
+    
+    def log_message(self, message):
+        """Log message to process log"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        log_message = f"[{timestamp}] {message}\n"
+        
+        self.process_log.insert("end", log_message)
+        self.process_log.see("end")
+    
+    def log_process(self, message):
+        """Alias for log_message for backward compatibility"""
+        self.log_message(message)
         
     def create_management_tab(self):
         # Management tab
@@ -521,14 +850,23 @@ class FaceAttendanceApp:
         if self.camera:
             self.camera.release()
             self.camera = None
+        
+        # Safe widget configuration with existence check
+        try:
+            if hasattr(self, 'start_camera_btn') and self.start_camera_btn.winfo_exists():
+                self.start_camera_btn.configure(state="normal")
+            if hasattr(self, 'stop_camera_btn') and self.stop_camera_btn.winfo_exists():
+                self.stop_camera_btn.configure(state="disabled")
             
-        self.start_camera_btn.configure(state="normal")
-        self.stop_camera_btn.configure(state="disabled")
-        
-        # Clear camera display
-        self.camera_frame.configure(image="", text="Kamera tidak aktif")
-        
-        self.log_recognition("Kamera dihentikan")
+            # Clear camera display
+            if hasattr(self, 'camera_frame') and self.camera_frame.winfo_exists():
+                self.camera_frame.configure(image="", text="Kamera tidak aktif")
+            
+            if hasattr(self, 'log_recognition'):
+                self.log_recognition("Kamera dihentikan")
+        except Exception as e:
+            print(f"Error in stop_camera: {e}")
+            # Widget might have been destroyed, just continue
         
     def camera_loop(self):
         """Main camera loop for face recognition"""
@@ -558,15 +896,19 @@ class FaceAttendanceApp:
                     
                     # Auto-mark attendance if confidence is high
                     if employee['confidence'] > 0.6:
-                        success, message = self.face_system.mark_attendance(
+                        # Check room access before marking attendance
+                        access_result = self.verify_room_access_and_attendance(
                             employee['employee_id'], 
+                            employee['name'],
                             employee['confidence']
                         )
                         
-                        if success:
-                            self.log_recognition(f"Absensi berhasil: {employee['name']}")
+                        if access_result['success']:
+                            self.log_recognition(f"✅ Akses diberikan: {employee['name']}")
                             # Refresh attendance display
                             self.window.after(0, self.refresh_attendance_data)
+                        else:
+                            self.log_recognition(f"❌ Akses ditolak: {employee['name']} - {access_result['reason']}")
                         
                 # Convert frame for tkinter display
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -586,6 +928,86 @@ class FaceAttendanceApp:
         """Update camera display in GUI"""
         self.camera_frame.configure(image=img_tk, text="")
         self.camera_frame.image = img_tk  # Keep a reference
+    
+    def verify_room_access_and_attendance(self, employee_id, employee_name, confidence):
+        """
+        Verify if employee has room access and mark attendance accordingly
+        Returns: dict with success status and reason
+        """
+        try:
+            # First check if user has room access today
+            access_info = backend_api.check_user_room_access(employee_id)
+            
+            if not access_info:
+                # Log denied access attempt
+                backend_api.log_door_access(
+                    employee_id, 
+                    access_type='face_recognition',
+                    access_status='denied',
+                    confidence_score=confidence,
+                    reason='Cannot verify room access - backend unavailable'
+                )
+                return {
+                    'success': False,
+                    'reason': 'Tidak dapat memverifikasi akses ruangan'
+                }
+            
+            if not access_info.get('allowed', False):
+                # Log denied access attempt
+                backend_api.log_door_access(
+                    employee_id, 
+                    access_type='face_recognition',
+                    access_status='denied',
+                    confidence_score=confidence,
+                    reason=access_info.get('reason', 'No scheduled classes today')
+                )
+                return {
+                    'success': False,
+                    'reason': access_info.get('reason', 'Tidak ada jadwal kelas hari ini')
+                }
+            
+            # User has access, now try to mark attendance
+            success, message = self.face_system.mark_attendance(employee_id, confidence)
+            
+            if success:
+                # Log successful access
+                sessions = access_info.get('sessions', [])
+                session_id = sessions[0].get('session_id') if sessions else None
+                
+                backend_api.log_door_access(
+                    employee_id, 
+                    access_type='face_recognition',
+                    access_status='granted',
+                    confidence_score=confidence,
+                    reason='Valid attendance marked',
+                    session_id=session_id
+                )
+                
+                return {
+                    'success': True,
+                    'reason': 'Absensi berhasil dicatat'
+                }
+            else:
+                # Attendance failed (probably already marked)
+                backend_api.log_door_access(
+                    employee_id, 
+                    access_type='face_recognition',
+                    access_status='denied',
+                    confidence_score=confidence,
+                    reason=f'Attendance marking failed: {message}'
+                )
+                
+                return {
+                    'success': False,
+                    'reason': message
+                }
+                
+        except Exception as e:
+            print(f"Error in verify_room_access_and_attendance: {e}")
+            return {
+                'success': False,
+                'reason': f'Error verifying access: {str(e)}'
+            }
         
     def log_recognition(self, message):
         """Log message to recognition info"""
@@ -739,6 +1161,11 @@ class FaceAttendanceApp:
     def refresh_models_list(self):
         """Refresh models list"""
         try:
+            # Check if models_tree widget exists
+            if not hasattr(self, 'models_tree'):
+                print("Models tree widget not available")
+                return
+                
             # Clear existing items
             for item in self.models_tree.get_children():
                 self.models_tree.delete(item)
@@ -746,8 +1173,8 @@ class FaceAttendanceApp:
             query = """
             SELECT ft.employee_id, u.fullname, ft.created_at, ft.status
             FROM face_training ft
-            JOIN employees e ON ft.employee_id = e.employee_id
-            JOIN users u ON e.user_id = u.user_id
+            JOIN users u ON ft.employee_id = u.user_id
+            WHERE ft.status = 'active'
             ORDER BY ft.created_at DESC
             """
             
@@ -756,17 +1183,18 @@ class FaceAttendanceApp:
             if results:
                 for row in results:
                     status = "Aktif" if row['status'] == 'active' else "Tidak Aktif"
-                    training_date = row['created_at'].strftime("%Y-%m-%d %H:%M") if row['created_at'] else "-"
+                    created_date = row['created_at'].strftime('%Y-%m-%d %H:%M') if row['created_at'] else 'N/A'
                     
                     self.models_tree.insert("", "end", values=(
                         row['employee_id'],
                         row['fullname'],
-                        training_date,
+                        created_date,
                         status
                     ))
                     
         except Exception as e:
             print(f"Error refreshing models list: {e}")
+            # Don't show error dialog, just log it
             
     def generate_report(self):
         """Generate attendance report for selected date"""
@@ -810,15 +1238,39 @@ class FaceAttendanceApp:
             
     def run(self):
         # Initialize data
-        self.refresh_attendance_data()
-        self.refresh_models_list()
+        try:
+            self.refresh_attendance_data()
+            self.refresh_models_list()
+        except Exception as e:
+            print(f"Error during initialization: {e}")
+        
+        # Set up proper cleanup on window close
+        def on_closing():
+            try:
+                if hasattr(self, 'camera_running') and self.camera_running:
+                    self.stop_camera()
+            except Exception as e:
+                print(f"Error during cleanup: {e}")
+            finally:
+                try:
+                    self.window.destroy()
+                except:
+                    pass
+        
+        self.window.protocol("WM_DELETE_WINDOW", on_closing)
         
         # Start main loop
-        self.window.mainloop()
-        
-        # Cleanup
-        if self.camera_running:
-            self.stop_camera()
+        try:
+            self.window.mainloop()
+        except Exception as e:
+            print(f"Error in main loop: {e}")
+        finally:
+            # Final cleanup
+            try:
+                if hasattr(self, 'camera_running') and self.camera_running:
+                    self.stop_camera()
+            except Exception as e:
+                print(f"Error in final cleanup: {e}")
 
 def main():
     # First show login window

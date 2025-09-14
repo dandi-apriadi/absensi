@@ -1,0 +1,43 @@
+# Face Recognition System Requirements
+# Install with: pip install -r requirements.txt
+
+# Core face recognition libraries
+opencv-python==4.8.1.78
+opencv-contrib-python==4.8.1.78
+
+# GUI framework
+customtkinter==5.2.2
+tkinter-tooltip==2.0.0
+
+# Image processing
+Pillow==10.0.1
+numpy==1.24.3
+
+# Database connectivity
+mysql-connector-python==8.1.0
+PyMySQL==1.1.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Password hashing
+argon2-cffi==23.1.0
+
+# HTTP requests for backend API
+requests==2.31.0
+
+# UUID generation
+uuid==1.30
+
+# Additional utilities
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Optional: For better performance
+# numba==0.57.1
+# scipy==1.11.2
+
+# Development dependencies (optional)
+# pytest==7.4.2
+# black==23.7.0
+# flake8==6.0.0
