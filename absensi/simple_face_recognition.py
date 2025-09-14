@@ -262,8 +262,12 @@ class SimpleFaceRecognition:
         faces = self.face_cascade.detectMultiScale(gray, 1.3, 5)
         
         recognized_employees = []
+        face_locations = []
         
         for (x, y, w, h) in faces:
+            # Store face location in (left, top, right, bottom) format
+            face_locations.append((x, y, x+w, y+h))
+            
             face_roi = gray[y:y+h, x:x+w]
             face_resized = cv2.resize(face_roi, (200, 200))
             
@@ -282,17 +286,21 @@ class SimpleFaceRecognition:
                         best_match = {
                             'employee_id': employee_id,
                             'name': face_data['name'],
-                            'confidence': 1 - (confidence / 100)  # Convert to 0-1 scale
+                            'confidence': 1 - (confidence / 100),  # Convert to 0-1 scale
+                            'face_location': (x, y, x+w, y+h)  # Store face location with recognition
                         }
                         
                 except Exception as e:
                     print(f"Error during recognition: {e}")
                     continue
                     
+            # Add recognized employee (or None for unknown faces)
             if best_match and best_match['confidence'] > 0.3:  # Minimum confidence
                 recognized_employees.append(best_match)
+            else:
+                recognized_employees.append(None)  # Unknown face
                 
-        return recognized_employees, [(x, y, x+w, y+h) for (x, y, w, h) in faces]
+        return recognized_employees, face_locations
         
     def mark_attendance(self, employee_id, confidence_score):
         """Mark attendance for recognized employee"""

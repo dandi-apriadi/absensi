@@ -832,33 +832,42 @@ class FaceAttendanceApp:
                 # Face recognition
                 recognized_employees, face_locations = self.face_system.recognize_face(frame)
                 
-                # Draw rectangles and labels
-                for (top, right, bottom, left) in face_locations:
+                # Draw rectangles and labels for each detected face
+                for i, (left, top, right, bottom) in enumerate(face_locations):
+                    # Draw rectangle around face
                     cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
                     
-                # Process recognized faces
-                for employee in recognized_employees:
-                    cv2.putText(frame, 
-                              f"{employee['name']} ({employee['confidence']:.2f})", 
-                              (left, top - 10), 
-                              cv2.FONT_HERSHEY_SIMPLEX, 
-                              0.7, (0, 255, 0), 2)
-                    
-                    # Auto-mark attendance if confidence is high
-                    if employee['confidence'] > 0.6:
-                        # Check room access before marking attendance
-                        access_result = self.verify_room_access_and_attendance(
-                            employee['employee_id'], 
-                            employee['name'],
-                            employee['confidence']
-                        )
+                    # If this face is recognized, show the name
+                    if i < len(recognized_employees) and recognized_employees[i] is not None:
+                        employee = recognized_employees[i]
+                        cv2.putText(frame, 
+                                  f"{employee['name']} ({employee['confidence']:.2f})", 
+                                  (left, top - 10), 
+                                  cv2.FONT_HERSHEY_SIMPLEX, 
+                                  0.7, (0, 255, 0), 2)
                         
-                        if access_result['success']:
-                            self.log_recognition(f"✅ Akses diberikan: {employee['name']}")
-                            # Refresh attendance display
-                            self.window.after(0, self.refresh_attendance_data)
-                        else:
-                            self.log_recognition(f"❌ Akses ditolak: {employee['name']} - {access_result['reason']}")
+                        # Auto-mark attendance if confidence is high
+                        if employee['confidence'] > 0.6:
+                            # Check room access before marking attendance
+                            access_result = self.verify_room_access_and_attendance(
+                                employee['employee_id'], 
+                                employee['name'],
+                                employee['confidence']
+                            )
+                            
+                            if access_result['success']:
+                                self.log_recognition(f"✅ Akses diberikan: {employee['name']}")
+                                # Refresh attendance display
+                                self.window.after(0, self.refresh_attendance_data)
+                            else:
+                                self.log_recognition(f"❌ Akses ditolak: {employee['name']} - {access_result['reason']}")
+                    else:
+                        # Unknown face
+                        cv2.putText(frame, 
+                                  "Unknown", 
+                                  (left, top - 10), 
+                                  cv2.FONT_HERSHEY_SIMPLEX, 
+                                  0.7, (0, 0, 255), 2)
                         
                 # Convert frame for tkinter display
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
