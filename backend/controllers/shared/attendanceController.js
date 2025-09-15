@@ -664,6 +664,9 @@ export const updateAttendanceStatus = async (req, res) => {
  */
 export const checkUserRoomAccess = async (req, res) => {
     try {
+        console.log('=== DEBUG: checkUserRoomAccess called ===');
+        console.log('Request body:', req.body);
+        
         const { user_id, date } = req.body;
 
         // Validation
@@ -676,40 +679,123 @@ export const checkUserRoomAccess = async (req, res) => {
         }
 
         const checkDate = date || new Date().toISOString().split('T')[0];
+        console.log('Check date:', checkDate);
 
         // Manual query since we don't use Sequelize associations
-        const [sessions] = await db.query(`
+        // First, check if user is enrolled in any classes with schedule for today
+        const now = new Date();
+        const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
+        const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+        
+        // Create day mapping
+        const dayMapping = {
+            'Monday': 'Senin',
+            'Tuesday': 'Selasa', 
+            'Wednesday': 'Rabu',
+            'Thursday': 'Kamis',
+            'Friday': 'Jumat',
+            'Saturday': 'Sabtu',
+            'Sunday': 'Minggu'
+        };
+        
+        const currentDayIndonesian = dayMapping[currentDay];
+        
+        console.log(`=== DEBUG ACCESS CHECK ===`);
+        console.log(`User: ${user_id}`);
+        console.log(`Current day (EN): ${currentDay}`);
+        console.log(`Current day (ID): ${currentDayIndonesian}`); 
+        console.log(`Current time: ${currentTime}`);
+        console.log(`Check date: ${checkDate}`);
+        
+        const [classes] = await db.query(`
             SELECT 
-                ats.id as session_id,
-                ats.session_date,
-                ats.start_time,
-                ats.end_time,
-                ats.session_name as topic,
+                cc.id as class_id,
                 cc.class_name,
-                c.course_name
-            FROM attendance_sessions ats
-            JOIN course_classes cc ON ats.class_id = cc.id
+                cc.schedule,
+                c.course_name,
+                c.course_code
+            FROM course_classes cc
             JOIN courses c ON cc.course_id = c.id
-            JOIN class_students cs ON cc.id = cs.class_id
-            WHERE cs.student_id = :user_id 
-            AND ats.session_date = :session_date
-            AND ats.status = 'active'
-            ORDER BY ats.start_time
+            JOIN student_enrollments se ON cc.id = se.class_id
+            WHERE se.student_id = :user_id 
+            AND cc.status = 'active'
+            AND se.status = 'enrolled'
         `, {
             replacements: { 
-                user_id: user_id, 
-                session_date: checkDate 
+                user_id: user_id
             },
             type: db.QueryTypes.SELECT
         });
 
-        if (sessions && sessions.length > 0) {
+        console.log(`Found ${classes.length} enrolled classes for user ${user_id}`);
+        
+        // Check if any class has schedule for current day and time
+        let hasAccess = false;
+        let accessInfo = [];
+        
+        for (const cls of classes) {
+            let schedule = [];
+            try {
+                if (cls.schedule && typeof cls.schedule === 'string') {
+                    schedule = JSON.parse(cls.schedule);
+                } else if (Array.isArray(cls.schedule)) {
+                    schedule = cls.schedule;
+                }
+            } catch (e) {
+                console.error('Error parsing schedule:', e);
+                continue;
+            }
+            
+            console.log(`Class ${cls.class_name} schedule:`, schedule);
+            
+            // Check if current day and time matches any schedule
+            for (const slot of schedule) {
+                console.log(`Checking slot:`, slot);
+                
+                // Improved day matching
+                const dayMatch = slot.day === currentDayIndonesian || slot.day === currentDay;
+                
+                console.log(`Day match: ${slot.day} === ${currentDayIndonesian} || ${slot.day} === ${currentDay} = ${dayMatch}`);
+                
+                if (dayMatch) {
+                    const startTime = slot.start_time;
+                    const endTime = slot.end_time;
+                    
+                    console.log(`Checking time: ${currentTime} between ${startTime} - ${endTime}`);
+                    
+                    // Check if current time is within the schedule
+                    if (currentTime >= startTime && currentTime <= endTime) {
+                        console.log(`✅ ACCESS GRANTED! Time ${currentTime} is within ${startTime}-${endTime}`);
+                        hasAccess = true;
+                        accessInfo.push({
+                            class_id: cls.class_id,
+                            class_name: cls.class_name,
+                            course_name: cls.course_name,
+                            course_code: cls.course_code,
+                            schedule_day: slot.day,
+                            start_time: startTime,
+                            end_time: endTime
+                        });
+                    } else {
+                        console.log(`❌ Time ${currentTime} is NOT within ${startTime}-${endTime}`);
+                    }
+                } else {
+                    console.log(`❌ Day doesn't match: ${slot.day} !== ${currentDayIndonesian}`);
+                }
+            }
+        }
+
+        console.log(`=== FINAL RESULT ===`);
+        console.log(`Has access: ${hasAccess}`);
+        console.log(`Access info:`, accessInfo);
+
+        if (hasAccess) {
             return res.status(200).json({
                 success: true,
                 data: {
                     allowed: true,
-                    sessions: sessions,
-                    reason: 'Has scheduled classes today'
+                    classes: accessInfo,
+                    reason: 'Has active class schedule now'
                 }
             });
         } else {
@@ -717,8 +803,8 @@ export const checkUserRoomAccess = async (req, res) => {
                 success: true,
                 data: {
                     allowed: false,
-                    sessions: [],
-                    reason: 'No scheduled classes today'
+                    classes: [],
+                    reason: classes.length > 0 ? 'No active class schedule now' : 'No scheduled classes today'
                 }
             });
         }

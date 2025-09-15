@@ -345,7 +345,7 @@ const RoomAccess = () => {
                                     <div className="flex items-center justify-between">
                                         <span className="text-gray-500">Jadwal</span>
                                         <span>
-                                            {cls.schedule && cls.schedule.length > 0 
+                                            {cls.schedule && Array.isArray(cls.schedule) && cls.schedule.length > 0 
                                                 ? cls.schedule.map(s => `${s.day} ${s.start_time || s.start}-${s.end_time || s.end}`).join(', ')
                                                 : 'Tidak ada jadwal'
                                             }

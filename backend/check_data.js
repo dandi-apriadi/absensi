@@ -22,28 +22,29 @@ async function checkClassData() {
         console.log('\nAttendance Sessions (today and future):');
         console.table(sessions);
         
-        // Check class_students table
-        const [students] = await connection.execute('SELECT cs.*, u.username FROM class_students cs JOIN users u ON cs.student_id = u.id LIMIT 5');
-        console.log('\nClass Students:');
+        // Check student_enrollments table
+        const [students] = await connection.execute('SELECT se.*, u.fullname FROM student_enrollments se JOIN users u ON se.student_id = u.user_id LIMIT 5');
+        console.log('\nStudent Enrollments:');
         console.table(students);
         
         // Check for specific user Dandi
-        const [dandi] = await connection.execute('SELECT * FROM users WHERE username LIKE ?', ['%dandi%']);
+        const [dandi] = await connection.execute('SELECT * FROM users WHERE fullname LIKE ?', ['%dandi%']);
         console.log('\nDandi User Data:');
         console.table(dandi);
         
         if (dandi.length > 0) {
-            const dandiId = dandi[0].id;
+            const dandiUserId = dandi[0].user_id; // Use user_id field, not id
             const [dandiClasses] = await connection.execute(`
                 SELECT 
                     cc.class_name,
                     c.course_name,
-                    cs.student_id
-                FROM class_students cs
-                JOIN course_classes cc ON cs.class_id = cc.id
+                    se.student_id,
+                    cc.schedule
+                FROM student_enrollments se
+                JOIN course_classes cc ON se.class_id = cc.id
                 JOIN courses c ON cc.course_id = c.id
-                WHERE cs.student_id = ?
-            `, [dandiId]);
+                WHERE se.student_id = ?
+            `, [dandiUserId]);
             console.log('\nDandi Class Enrollments:');
             console.table(dandiClasses);
             
@@ -58,9 +59,9 @@ async function checkClassData() {
                 FROM attendance_sessions ats
                 JOIN course_classes cc ON ats.class_id = cc.id
                 JOIN courses c ON cc.course_id = c.id
-                JOIN class_students cs ON cc.id = cs.class_id
-                WHERE cs.student_id = ? AND ats.session_date >= CURDATE()
-            `, [dandiId]);
+                JOIN student_enrollments se ON cc.id = se.class_id
+                WHERE se.student_id = ? AND ats.session_date >= CURDATE()
+            `, [dandiUserId]);
             console.log('\nDandi Scheduled Sessions:');
             console.table(dandiSessions);
         }
