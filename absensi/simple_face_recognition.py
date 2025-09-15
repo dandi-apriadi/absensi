@@ -187,12 +187,29 @@ class SimpleFaceRecognition:
             current_time = datetime.now()
             model_id = str(uuid.uuid4())
             
-            query = """
-            INSERT INTO face_training (employee_id, model_id, training_images_count, 
-                                     model_path, status, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
-            params = (employee_id, model_id, len(faces), model_path, 'active', current_time, current_time)
+            # Check if model already exists for this employee
+            check_query = "SELECT id FROM face_training WHERE employee_id = %s"
+            existing = simple_db.execute_query(check_query, (employee_id,))
+            
+            if existing:
+                # Update existing record
+                query = """
+                UPDATE face_training 
+                SET model_id = %s, training_images_count = %s, model_path = %s, 
+                    status = %s, updated_at = %s
+                WHERE employee_id = %s
+                """
+                params = (model_id, len(faces), model_path, 'active', current_time, employee_id)
+                print(f"Updating existing model for employee {employee_id}")
+            else:
+                # Insert new record
+                query = """
+                INSERT INTO face_training (employee_id, model_id, training_images_count, 
+                                         model_path, status, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+                params = (employee_id, model_id, len(faces), model_path, 'active', current_time, current_time)
+                print(f"Creating new model for employee {employee_id}")
             
             result = simple_db.execute_query(query, params)
             
@@ -204,7 +221,48 @@ class SimpleFaceRecognition:
                 return False
                 
         except Exception as e:
+            if "Duplicate entry" in str(e) or "IntegrityError" in str(e):
+                print(f"Model already exists for employee {employee_id}, attempting to update...")
+                # Force update the existing record
+                try:
+                    current_time = datetime.now()
+                    update_query = """
+                    UPDATE face_training 
+                    SET training_images_count = %s, model_path = %s, 
+                        status = %s, updated_at = %s
+                    WHERE employee_id = %s
+                    """
+                    update_params = (len(faces), model_path, 'active', current_time, employee_id)
+                    result = simple_db.execute_query(update_query, update_params)
+                    if result:
+                        print(f"Successfully updated existing model for employee {employee_id}")
+                        return True
+                except Exception as update_error:
+                    print(f"Failed to update existing model: {update_error}")
+            
             print(f"Error training model: {e}")
+            return False
+    
+    def check_existing_model(self, employee_id):
+        """Check if a face model already exists for the employee"""
+        try:
+            query = "SELECT id, model_path FROM face_training WHERE employee_id = %s"
+            result = simple_db.execute_query(query, (employee_id,))
+            return result[0] if result else None
+        except Exception as e:
+            print(f"Error checking existing model: {e}")
+            return None
+    
+    def delete_existing_model_files(self, model_path):
+        """Delete existing model files safely"""
+        try:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+                print(f"Deleted old model file: {model_path}")
+                return True
+            return True  # File doesn't exist, consider it successful
+        except Exception as e:
+            print(f"Warning: Could not delete old model file {model_path}: {e}")
             return False
             
     def load_all_face_models(self):
