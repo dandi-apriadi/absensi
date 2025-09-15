@@ -396,6 +396,18 @@ class FaceAttendanceApp:
         )
         self.admin_delete_btn.pack(side="left", padx=10, pady=10)
         
+        # Cleanup dataset button
+        self.admin_cleanup_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Cleanup Dataset",
+            command=self.admin_cleanup_datasets,
+            width=150,
+            height=40,
+            fg_color="orange",
+            state="normal"  # Always enabled for maintenance
+        )
+        self.admin_cleanup_btn.pack(side="left", padx=10, pady=10)
+        
         # Check room access button
         self.check_access_btn = ctk.CTkButton(
             buttons_frame,
@@ -632,6 +644,56 @@ class FaceAttendanceApp:
             self.log_message(f"Deleting model for {user['fullname']}...")
             # Implementation for deleting model
             # TODO: Add delete model functionality
+    
+    def admin_cleanup_datasets(self):
+        """Admin cleanup all dataset folders to free up storage"""
+        result = messagebox.askyesno(
+            "Konfirmasi Cleanup Dataset",
+            "Apakah Anda yakin ingin menghapus SEMUA folder dataset?\n\n"
+            "⚠️  PERINGATAN:\n"
+            "- Ini akan menghapus semua foto dataset yang tersimpan\n"
+            "- Model yang sudah dilatih akan tetap aman\n"
+            "- Operasi ini tidak dapat dibatalkan\n\n"
+            "Dataset hanya diperlukan saat training ulang. Jika model sudah dilatih, "
+            "dataset bisa dihapus untuk menghemat storage."
+        )
+        
+        if result:
+            self.log_message("🧹 Memulai cleanup dataset folders...")
+            
+            # Run cleanup in separate thread to avoid UI freezing
+            thread = threading.Thread(
+                target=self._cleanup_datasets_thread,
+                daemon=True
+            )
+            thread.start()
+    
+    def _cleanup_datasets_thread(self):
+        """Thread method for cleaning up dataset folders"""
+        try:
+            success = self.face_system.cleanup_all_dataset_folders()
+            
+            if success:
+                self.log_message("✅ Cleanup dataset berhasil!")
+                self.window.after(0, lambda: messagebox.showinfo(
+                    "Cleanup Berhasil", 
+                    "Semua folder dataset telah berhasil dihapus!\n\n"
+                    "Storage telah dibebaskan dan model tetap aman."
+                ))
+            else:
+                self.log_message("⚠️  Cleanup dataset gagal atau sebagian gagal")
+                self.window.after(0, lambda: messagebox.showwarning(
+                    "Cleanup Sebagian Gagal", 
+                    "Beberapa folder dataset mungkin tidak berhasil dihapus.\n"
+                    "Cek log untuk detail lebih lanjut."
+                ))
+                
+        except Exception as e:
+            self.log_message(f"Error during cleanup: {e}")
+            self.window.after(0, lambda: messagebox.showerror(
+                "Error Cleanup", 
+                f"Terjadi error saat cleanup dataset:\n{e}"
+            ))
     
     def _capture_dataset_thread(self, user_id, user_name):
         """Thread method for capturing dataset"""

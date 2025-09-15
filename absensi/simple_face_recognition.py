@@ -215,6 +215,15 @@ class SimpleFaceRecognition:
             
             if result:
                 print(f"Face model trained successfully for employee {employee_id}")
+                
+                # Cleanup dataset folder after successful training
+                print("🧹 Cleaning up dataset folder...")
+                cleanup_success = self.cleanup_dataset_folder(employee_id)
+                if cleanup_success:
+                    print(f"✅ Training completed with automatic cleanup for {employee_id}")
+                else:
+                    print(f"⚠️  Training completed but cleanup failed for {employee_id}")
+                
                 return True
             else:
                 print("Failed to save model to database")
@@ -236,6 +245,15 @@ class SimpleFaceRecognition:
                     result = simple_db.execute_query(update_query, update_params)
                     if result:
                         print(f"Successfully updated existing model for employee {employee_id}")
+                        
+                        # Cleanup dataset folder after successful update
+                        print("🧹 Cleaning up dataset folder...")
+                        cleanup_success = self.cleanup_dataset_folder(employee_id)
+                        if cleanup_success:
+                            print(f"✅ Model update completed with automatic cleanup for {employee_id}")
+                        else:
+                            print(f"⚠️  Model update completed but cleanup failed for {employee_id}")
+                        
                         return True
                 except Exception as update_error:
                     print(f"Failed to update existing model: {update_error}")
@@ -263,6 +281,78 @@ class SimpleFaceRecognition:
             return True  # File doesn't exist, consider it successful
         except Exception as e:
             print(f"Warning: Could not delete old model file {model_path}: {e}")
+            return False
+    
+    def cleanup_dataset_folder(self, employee_id):
+        """Delete dataset folder for employee after successful model training"""
+        try:
+            dataset_folder = os.path.join("datasets", f"employee_{employee_id}")
+            
+            if os.path.exists(dataset_folder):
+                import shutil
+                # Count files before deletion for logging
+                file_count = len([f for f in os.listdir(dataset_folder) 
+                                if os.path.isfile(os.path.join(dataset_folder, f))])
+                
+                # Remove the entire dataset folder
+                shutil.rmtree(dataset_folder)
+                print(f"✅ Cleaned up dataset folder: {dataset_folder} ({file_count} files deleted)")
+                
+                # Calculate storage saved (rough estimate: ~50KB per image)
+                storage_saved_mb = (file_count * 50) / 1024  # Convert KB to MB
+                print(f"💾 Storage saved: ~{storage_saved_mb:.1f} MB")
+                
+                return True
+            else:
+                print(f"Dataset folder not found: {dataset_folder}")
+                return True  # Consider as success if folder doesn't exist
+                
+        except Exception as e:
+            print(f"⚠️  Warning: Could not cleanup dataset folder for {employee_id}: {e}")
+            print("Model training was successful, but manual cleanup may be needed")
+            return False
+    
+    def cleanup_all_dataset_folders(self):
+        """Clean up all dataset folders (useful for maintenance)"""
+        try:
+            datasets_dir = "datasets"
+            if not os.path.exists(datasets_dir):
+                print("No datasets directory found")
+                return True
+            
+            total_deleted = 0
+            total_storage_saved = 0
+            
+            # Get all employee dataset folders
+            for folder_name in os.listdir(datasets_dir):
+                folder_path = os.path.join(datasets_dir, folder_name)
+                if os.path.isdir(folder_path) and folder_name.startswith("employee_"):
+                    try:
+                        # Count files before deletion
+                        file_count = len([f for f in os.listdir(folder_path) 
+                                        if os.path.isfile(os.path.join(folder_path, f))])
+                        
+                        # Remove folder
+                        import shutil
+                        shutil.rmtree(folder_path)
+                        
+                        total_deleted += file_count
+                        print(f"Deleted {folder_name}: {file_count} files")
+                        
+                    except Exception as e:
+                        print(f"Failed to delete {folder_name}: {e}")
+            
+            # Calculate total storage saved
+            total_storage_saved_mb = (total_deleted * 50) / 1024
+            
+            print(f"✅ Cleanup completed!")
+            print(f"📁 Total files deleted: {total_deleted}")
+            print(f"💾 Total storage saved: ~{total_storage_saved_mb:.1f} MB")
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error during dataset cleanup: {e}")
             return False
             
     def load_all_face_models(self):
