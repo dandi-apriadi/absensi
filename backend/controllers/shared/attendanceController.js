@@ -818,3 +818,131 @@ export const checkUserRoomAccess = async (req, res) => {
         });
     }
 };
+
+/**
+ * Get attendance data by class ID for detailed view
+ */
+export const getClassAttendanceData = async (req, res) => {
+    try {
+        const { classId } = req.params;
+
+        if (!classId) {
+            return res.status(400).json({
+                success: false,
+                message: "Class ID is required"
+            });
+        }
+
+        // Get attendance data with sessions and student details
+        const attendanceData = await db.query(`
+            SELECT 
+                sa.id as attendance_id,
+                sa.session_id,
+                sa.student_id,
+                sa.check_in_time,
+                sa.status,
+                sa.attendance_method,
+                sa.confidence_score,
+                sa.notes,
+                sa.created_at,
+                
+                ases.session_date,
+                ases.session_number,
+                ases.topic as session_topic,
+                ases.start_time,
+                ases.end_time,
+                ases.status as session_status,
+                ases.session_type,
+                
+                u.fullname as student_name,
+                u.student_id as student_number,
+                
+                frl.confidence_score as face_confidence,
+                frl.recognition_status,
+                frl.processing_time
+                
+            FROM student_attendances sa
+            JOIN attendance_sessions ases ON sa.session_id = ases.id
+            JOIN users u ON sa.student_id = u.user_id
+            LEFT JOIN face_recognition_logs frl ON ases.id = frl.session_id AND sa.student_id = frl.recognized_user_id
+            WHERE ases.class_id = ?
+            ORDER BY ases.session_date DESC, ases.session_number DESC, sa.check_in_time DESC
+        `, {
+            replacements: [classId],
+            type: db.QueryTypes.SELECT
+        });
+
+        // Get attendance statistics
+        const attendanceStats = await db.query(`
+            SELECT 
+                COUNT(DISTINCT ases.id) as total_sessions,
+                COUNT(DISTINCT CASE WHEN sa.status = 'present' THEN sa.id END) as total_present,
+                COUNT(DISTINCT CASE WHEN sa.status = 'late' THEN sa.id END) as total_late,
+                COUNT(DISTINCT CASE WHEN sa.status = 'absent' THEN sa.id END) as total_absent,
+                COUNT(DISTINCT sa.student_id) as total_students_recorded
+            FROM attendance_sessions ases
+            LEFT JOIN student_attendances sa ON ases.id = sa.session_id
+            WHERE ases.class_id = ?
+        `, {
+            replacements: [classId],
+            type: db.QueryTypes.SELECT
+        });
+
+        // Get class information (manual join since associations are removed)
+        const classInfoQuery = await db.query(`
+            SELECT 
+                cc.id,
+                cc.class_name,
+                cc.academic_year,
+                cc.semester_period,
+                c.course_name,
+                c.course_code
+            FROM course_classes cc
+            JOIN courses c ON cc.course_id = c.id
+            WHERE cc.id = ?
+        `, {
+            replacements: [classId],
+            type: db.QueryTypes.SELECT
+        });
+
+        const classInfo = classInfoQuery[0];
+
+        if (!classInfo) {
+            return res.status(404).json({
+                success: false,
+                message: "Kelas tidak ditemukan"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Data absensi berhasil diambil",
+            data: {
+                attendance_records: attendanceData,
+                statistics: attendanceStats[0] || {
+                    total_sessions: 0,
+                    total_present: 0,
+                    total_late: 0,
+                    total_absent: 0,
+                    total_students_recorded: 0
+                },
+                class_info: {
+                    id: classInfo.id,
+                    class_name: classInfo.class_name,
+                    course_name: classInfo.course_name,
+                    course_code: classInfo.course_code,
+                    academic_year: classInfo.academic_year,
+                    semester_period: classInfo.semester_period
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error("Error getting class attendance data:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Gagal mengambil data absensi",
+            error: error.message
+        });
+    }
+};

@@ -39,6 +39,17 @@ const ClassAccessDetail = () => {
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState(null);
     
+    // Attendance data states
+    const [attendanceData, setAttendanceData] = useState([]);
+    const [loadingAttendance, setLoadingAttendance] = useState(false);
+    const [attendanceStats, setAttendanceStats] = useState({
+        totalSessions: 0,
+        totalAttendances: 0,
+        presentCount: 0,
+        lateCount: 0,
+        absentCount: 0
+    });
+    
     // Schedule editing states
     const [isEditingSchedule, setIsEditingSchedule] = useState(false);
     const [scheduleData, setScheduleData] = useState([]);
@@ -48,6 +59,7 @@ const ClassAccessDetail = () => {
     useEffect(() => {
         AOS.init({ duration: 600, once: true });
         fetchClassDetail();
+        fetchAttendanceData();
     }, [classId]);
 
     const fetchClassDetail = async () => {
@@ -90,6 +102,34 @@ const ClassAccessDetail = () => {
             });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchAttendanceData = async () => {
+        try {
+            setLoadingAttendance(true);
+            console.log('Fetching attendance data for class ID:', classId);
+            
+            const res = await api.get(`/api/attendance/class/${classId}/attendance-data`);
+            
+            console.log('Attendance data response:', res.data);
+            
+            if (res.data.success) {
+                const data = res.data.data;
+                setAttendanceData(data.attendance_records || []);
+                setAttendanceStats({
+                    totalSessions: data.statistics.total_sessions || 0,
+                    totalAttendances: data.attendance_records?.length || 0,
+                    presentCount: data.statistics.total_present || 0,
+                    lateCount: data.statistics.total_late || 0,
+                    absentCount: data.statistics.total_absent || 0
+                });
+            }
+        } catch (error) {
+            console.error('Failed to fetch attendance data:', error);
+            // Don't show error for attendance data as it's secondary information
+        } finally {
+            setLoadingAttendance(false);
         }
     };
 
@@ -163,6 +203,44 @@ const ClassAccessDetail = () => {
         document.body.removeChild(link);
         
         setMessage({ type: 'success', text: 'Laporan berhasil diunduh' });
+    };
+
+    const handleDownloadAttendance = () => {
+        if (!attendanceData || attendanceData.length === 0) {
+            setMessage({ type: 'error', text: 'Tidak ada data absensi untuk diunduh' });
+            return;
+        }
+
+        // Create CSV content for attendance
+        const headers = ['Tanggal Sesi', 'Nomor Sesi', 'Topik', 'Nama Mahasiswa', 'NIM', 'Status', 'Waktu Check-in', 'Metode Absensi', 'Confidence Score'];
+        const csvContent = [
+            headers.join(','),
+            ...attendanceData.map(attendance => [
+                attendance.session_date,
+                attendance.session_number,
+                `"${attendance.session_topic || '-'}"`,
+                `"${attendance.student_name}"`,
+                attendance.student_id,
+                attendance.status === 'present' ? 'Hadir' : attendance.status === 'late' ? 'Terlambat' : 'Tidak Hadir',
+                attendance.check_in_time ? formatTime(attendance.check_in_time) : '-',
+                attendance.attendance_method === 'face_recognition' ? 'Face Recognition' : 
+                attendance.attendance_method === 'manual' ? 'Manual' : 'QR Code',
+                attendance.confidence_score ? (attendance.confidence_score * 100).toFixed(1) + '%' : '-'
+            ].join(','))
+        ].join('\n');
+
+        // Create and download file
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `data-absensi-${classDetail.course_code}-${classDetail.class_name}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        setMessage({ type: 'success', text: 'Data absensi berhasil diunduh' });
     };
 
     // Schedule editing functions
@@ -493,54 +571,108 @@ const ClassAccessDetail = () => {
                         )}
                     </div>
 
-                    {/* Access Logs */}
+                    {/* Attendance History */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6" data-aos="fade-up" data-aos-delay="200">
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center justify-between mb-6">
                             <h2 className="text-xl font-semibold text-gray-800 flex items-center">
                                 <MdHistory className="w-5 h-5 mr-2" />
-                                Riwayat Akses (7 Hari Terakhir)
+                                Riwayat Absensi
                             </h2>
-                            {classDetail.accessLogs && classDetail.accessLogs.length > 0 && (
+                            <div className="flex items-center space-x-2">
                                 <button
-                                    onClick={handleDownloadReport}
-                                    className="inline-flex items-center px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                    onClick={fetchAttendanceData}
+                                    disabled={loadingAttendance}
+                                    className="inline-flex items-center px-3 py-1.5 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
                                 >
-                                    <MdDownload className="w-4 h-4 mr-1" />
-                                    Unduh CSV
+                                    <MdRefresh className={`w-4 h-4 mr-1 ${loadingAttendance ? 'animate-spin' : ''}`} />
+                                    Refresh
                                 </button>
-                            )}
+                                {attendanceData && attendanceData.length > 0 && (
+                                    <button
+                                        onClick={handleDownloadAttendance}
+                                        className="inline-flex items-center px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                    >
+                                        <MdDownload className="w-4 h-4 mr-1" />
+                                        Unduh
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Attendance Stats Cards */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                            <div className="bg-blue-50 rounded-lg p-4 text-center">
+                                <div className="text-2xl font-bold text-blue-600">{attendanceStats.totalSessions}</div>
+                                <div className="text-sm text-blue-600">Total Sesi</div>
+                            </div>
+                            <div className="bg-green-50 rounded-lg p-4 text-center">
+                                <div className="text-2xl font-bold text-green-600">{attendanceStats.presentCount}</div>
+                                <div className="text-sm text-green-600">Hadir</div>
+                            </div>
+                            <div className="bg-yellow-50 rounded-lg p-4 text-center">
+                                <div className="text-2xl font-bold text-yellow-600">{attendanceStats.lateCount}</div>
+                                <div className="text-sm text-yellow-600">Terlambat</div>
+                            </div>
+                            <div className="bg-red-50 rounded-lg p-4 text-center">
+                                <div className="text-2xl font-bold text-red-600">{attendanceStats.absentCount}</div>
+                                <div className="text-sm text-red-600">Tidak Hadir</div>
+                            </div>
                         </div>
                         
-                        {classDetail.accessLogs && classDetail.accessLogs.length > 0 ? (
-                            <div className="space-y-2 max-h-96 overflow-y-auto">
-                                {classDetail.accessLogs.map((log, index) => (
-                                    <div key={index} className="flex items-center justify-between p-3 border border-gray-100 rounded-lg hover:bg-gray-50">
-                                        <div className="flex items-center space-x-3">
-                                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        {loadingAttendance ? (
+                            <div className="text-center py-8">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                                <p className="text-sm text-gray-500">Memuat data absensi...</p>
+                            </div>
+                        ) : attendanceData && attendanceData.length > 0 ? (
+                            <div className="space-y-3 max-h-96 overflow-y-auto">
+                                {attendanceData.map((attendance, index) => (
+                                    <div key={index} className="flex items-center justify-between p-4 border border-gray-100 rounded-lg hover:bg-gray-50">
+                                        <div className="flex items-center space-x-4">
+                                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                                                 <span className="text-blue-600 font-medium text-sm">
-                                                    {log.studentName?.charAt(0)?.toUpperCase() || 'M'}
+                                                    {attendance.student_name?.charAt(0)?.toUpperCase() || 'M'}
                                                 </span>
                                             </div>
                                             <div>
-                                                <p className="font-medium text-gray-900">{log.studentName}</p>
-                                                <p className="text-sm text-gray-500">{log.studentId}</p>
+                                                <p className="font-medium text-gray-900">{attendance.student_name}</p>
+                                                <p className="text-sm text-gray-500">{attendance.student_id}</p>
+                                                <p className="text-xs text-gray-400">
+                                                    Sesi {attendance.session_number} - {attendance.session_topic}
+                                                </p>
                                             </div>
                                         </div>
                                         
                                         <div className="text-right">
                                             <p className="text-sm font-medium text-gray-900">
-                                                {formatDate(log.date)}
+                                                {formatDate(attendance.session_date)}
                                             </p>
                                             <p className="text-sm text-gray-500">
-                                                {formatTime(log.time)} - {log.sessionName}
+                                                {attendance.check_in_time ? formatTime(attendance.check_in_time) : '-'}
                                             </p>
-                                            <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                                                log.status === 'present' 
-                                                    ? 'bg-green-100 text-green-700'
-                                                    : 'bg-yellow-100 text-yellow-700'
-                                            }`}>
-                                                {log.status === 'present' ? 'Hadir' : 'Terlambat'}
-                                            </span>
+                                            <div className="flex items-center space-x-2 mt-1">
+                                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                    attendance.status === 'present' 
+                                                        ? 'bg-green-100 text-green-700'
+                                                        : attendance.status === 'late'
+                                                            ? 'bg-yellow-100 text-yellow-700'
+                                                            : 'bg-red-100 text-red-700'
+                                                }`}>
+                                                    {attendance.status === 'present' ? 'Hadir' : 
+                                                     attendance.status === 'late' ? 'Terlambat' : 'Tidak Hadir'}
+                                                </span>
+                                                {attendance.attendance_method && (
+                                                    <span className="text-xs text-gray-400">
+                                                        {attendance.attendance_method === 'face_recognition' ? 'Face Recognition' : 
+                                                         attendance.attendance_method === 'manual' ? 'Manual' : 'QR Code'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {attendance.confidence_score && (
+                                                <p className="text-xs text-gray-400">
+                                                    Confidence: {(attendance.confidence_score * 100).toFixed(1)}%
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -548,7 +680,10 @@ const ClassAccessDetail = () => {
                         ) : (
                             <div className="text-center py-8 text-gray-500">
                                 <MdHistory className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                                <p>Belum ada riwayat akses</p>
+                                <p>Belum ada data absensi</p>
+                                <p className="text-sm text-gray-400 mt-1">
+                                    Data absensi akan muncul setelah mahasiswa melakukan check-in
+                                </p>
                             </div>
                         )}
                     </div>

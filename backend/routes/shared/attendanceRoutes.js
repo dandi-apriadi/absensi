@@ -9,7 +9,8 @@ import {
     getSessionAttendances,
     getAttendanceStatistics,
     updateAttendanceStatus,
-    checkUserRoomAccess
+    checkUserRoomAccess,
+    getClassAttendanceData
 } from '../../controllers/shared/attendanceController.js';
 
 const router = express.Router();
@@ -32,6 +33,9 @@ router.patch('/records/:id', updateAttendanceStatus);
 
 // Statistics
 router.get('/statistics/class/:course_class_id', getAttendanceStatistics);
+
+// Class attendance data (for detail view)
+router.get('/class/:classId/attendance-data', getClassAttendanceData);
 
 // Room Access Check (for face recognition system)
 router.post('/check-access', checkUserRoomAccess);
