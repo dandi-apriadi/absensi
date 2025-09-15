@@ -12,6 +12,7 @@ from simple_face_recognition import SimpleFaceRecognition
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from backend_api import backend_api
+from relay_control import activate_door, success_beep, denied_beep, cleanup_gpio
 
 class LoginWindow:
     def __init__(self):
@@ -856,11 +857,25 @@ class FaceAttendanceApp:
                             )
                             
                             if access_result['success']:
-                                self.log_recognition(f"✅ Akses diberikan: {employee['name']}")
+                                # Log dengan pesan yang lebih jelas
+                                if access_result.get('action') == 'attendance_and_door':
+                                    self.log_recognition(f"✅ {access_result['reason']}")
+                                    # Aktivasi relay untuk pintu
+                                    self.activate_door_relay()
+                                elif access_result.get('action') == 'door_only':
+                                    self.log_recognition(f"🚪 {access_result['reason']}")
+                                    # Aktivasi relay untuk pintu
+                                    self.activate_door_relay()
+                                else:
+                                    self.log_recognition(f"✅ Akses diberikan: {employee['name']}")
+                                    self.activate_door_relay()
+                                
                                 # Refresh attendance display
                                 self.window.after(0, self.refresh_attendance_data)
                             else:
                                 self.log_recognition(f"❌ Akses ditolak: {employee['name']} - {access_result['reason']}")
+                                # Play denied beep
+                                denied_beep()
                     else:
                         # Unknown face
                         cv2.putText(frame, 
@@ -890,7 +905,9 @@ class FaceAttendanceApp:
     
     def verify_room_access_and_attendance(self, employee_id, employee_name, confidence):
         """
-        Verify if employee has room access and mark attendance accordingly
+        Dual function: Verify room access + mark attendance if not already marked
+        1. Check room access (always allowed if user has scheduled classes)
+        2. Mark attendance once per session
         Returns: dict with success status and reason
         """
         try:
@@ -912,7 +929,7 @@ class FaceAttendanceApp:
                 }
             
             if not access_info.get('allowed', False):
-                # Log denied access attempt
+                # No room access - deny entry
                 backend_api.log_door_access(
                     employee_id, 
                     access_type='face_recognition',
@@ -925,40 +942,136 @@ class FaceAttendanceApp:
                     'reason': access_info.get('reason', 'Tidak ada jadwal kelas hari ini')
                 }
             
-            # User has access, now try to mark attendance
-            success, message = self.face_system.mark_attendance(employee_id, confidence)
+            # User HAS room access - proceed with dual function
             
-            if success:
-                # Log successful access
-                sessions = access_info.get('sessions', [])
-                session_id = sessions[0].get('session_id') if sessions else None
-                
+            # Try to mark attendance (only if not already marked)
+            attendance_success, attendance_message = self.face_system.mark_attendance(employee_id, confidence)
+            
+            # Get session info for logging
+            sessions = access_info.get('sessions', [])
+            session_id = sessions[0].get('session_id') if sessions else None
+            
+            if attendance_success:
+                # First time entry today - attendance marked + door access granted
                 backend_api.log_door_access(
                     employee_id, 
                     access_type='face_recognition',
                     access_status='granted',
                     confidence_score=confidence,
-                    reason='Valid attendance marked',
+                    reason='Attendance marked + door access granted',
                     session_id=session_id
                 )
                 
                 return {
                     'success': True,
-                    'reason': 'Absensi berhasil dicatat'
+                    'reason': f'Selamat datang {employee_name}! Absensi dicatat + Pintu dibuka',
+                    'action': 'attendance_and_door',
+                    'attendance_marked': True
                 }
             else:
-                # Attendance failed (probably already marked)
+                # Already marked attendance - but still grant door access
+                backend_api.log_door_access(
+                    employee_id, 
+                    access_type='face_recognition',
+                    access_status='granted',
+                    confidence_score=confidence,
+                    reason='Door access granted (attendance already marked)',
+                    session_id=session_id
+                )
+                
+                return {
+                    'success': True,
+                    'reason': f'Selamat datang kembali {employee_name}! Pintu dibuka',
+                    'action': 'door_only',
+                    'attendance_marked': False
+                }
+                
+        except Exception as e:
+            print(f"Error in verify_room_access_and_attendance: {e}")
+            return {
+                'success': False,
+                'reason': f'Error verifying access: {str(e)}'
+            }
+        """
+        Dual function: Verify room access + mark attendance if not already marked
+        1. Check room access (always allowed if user has scheduled classes)
+        2. Mark attendance once per session
+        Returns: dict with success status and reason
+        """
+        try:
+            # First check if user has room access today
+            access_info = backend_api.check_user_room_access(employee_id)
+            
+            if not access_info:
+                # Log denied access attempt
                 backend_api.log_door_access(
                     employee_id, 
                     access_type='face_recognition',
                     access_status='denied',
                     confidence_score=confidence,
-                    reason=f'Attendance marking failed: {message}'
+                    reason='Cannot verify room access - backend unavailable'
+                )
+                return {
+                    'success': False,
+                    'reason': 'Tidak dapat memverifikasi akses ruangan'
+                }
+            
+            if not access_info.get('allowed', False):
+                # No room access - deny entry
+                backend_api.log_door_access(
+                    employee_id, 
+                    access_type='face_recognition',
+                    access_status='denied',
+                    confidence_score=confidence,
+                    reason=access_info.get('reason', 'No scheduled classes today')
+                )
+                return {
+                    'success': False,
+                    'reason': access_info.get('reason', 'Tidak ada jadwal kelas hari ini')
+                }
+            
+            # User HAS room access - proceed with dual function
+            
+            # Try to mark attendance (only if not already marked)
+            attendance_success, attendance_message = self.face_system.mark_attendance(employee_id, confidence)
+            
+            # Get session info for logging
+            sessions = access_info.get('sessions', [])
+            session_id = sessions[0].get('session_id') if sessions else None
+            
+            if attendance_success:
+                # First time entry today - attendance marked + door access granted
+                backend_api.log_door_access(
+                    employee_id, 
+                    access_type='face_recognition',
+                    access_status='granted',
+                    confidence_score=confidence,
+                    reason='Attendance marked + door access granted',
+                    session_id=session_id
                 )
                 
                 return {
-                    'success': False,
-                    'reason': message
+                    'success': True,
+                    'reason': f'Selamat datang {employee_name}! Absensi dicatat + Pintu dibuka',
+                    'action': 'attendance_and_door',
+                    'attendance_marked': True
+                }
+            else:
+                # Already marked attendance - but still grant door access
+                backend_api.log_door_access(
+                    employee_id, 
+                    access_type='face_recognition',
+                    access_status='granted',
+                    confidence_score=confidence,
+                    reason='Door access granted (attendance already marked)',
+                    session_id=session_id
+                )
+                
+                return {
+                    'success': True,
+                    'reason': f'Selamat datang kembali {employee_name}! Pintu dibuka',
+                    'action': 'door_only',
+                    'attendance_marked': False
                 }
                 
         except Exception as e:
@@ -975,6 +1088,28 @@ class FaceAttendanceApp:
         
         self.recognition_info.insert("end", log_message)
         self.recognition_info.see("end")
+    
+    def activate_door_relay(self):
+        """
+        Activate door relay for Raspberry Pi
+        Uses the relay_control module for GPIO operations
+        """
+        try:
+            # Activate door relay with callback for logging
+            def door_closed_callback():
+                self.log_recognition("🔒 Pintu ditutup kembali")
+            
+            success = activate_door(duration=3, callback=door_closed_callback)
+            
+            if success:
+                self.log_recognition("🔓 Pintu dibuka untuk 3 detik")
+                success_beep()  # Play success sound
+            else:
+                self.log_recognition("⚠️ Error mengaktifkan relay pintu")
+                
+        except Exception as e:
+            print(f"[RELAY] Error activating door relay: {e}")
+            self.log_recognition(f"⚠️ Error mengaktifkan relay: {e}")
         
     def capture_dataset(self):
         """Capture face dataset for current logged in user"""
@@ -1167,6 +1302,8 @@ class FaceAttendanceApp:
             try:
                 if hasattr(self, 'camera_running') and self.camera_running:
                     self.stop_camera()
+                # Cleanup GPIO resources
+                cleanup_gpio()
             except Exception as e:
                 print(f"Error during cleanup: {e}")
             finally:
@@ -1187,6 +1324,8 @@ class FaceAttendanceApp:
             try:
                 if hasattr(self, 'camera_running') and self.camera_running:
                     self.stop_camera()
+                # Cleanup GPIO resources
+                cleanup_gpio()
             except Exception as e:
                 print(f"Error in final cleanup: {e}")
 
