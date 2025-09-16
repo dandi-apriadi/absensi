@@ -1,0 +1,87 @@
+import time
+import serial
+import RPi.GPIO as GPIO
+from adafruit_fingerprint import Adafruit_Fingerprint
+import firebase_admin
+from firebase_admin import credentials, db
+import os
+import csv
+
+# Initialize Firebase (logging access)
+cred = credentials.Certificate("/home/dsbhfh12012/test2/pintu-af58e-firebase-adminsdk-zdcp1-3420d69312.json")
+firebase_admin.initialize_app(cred, {
+    'databaseURL': 'https://pintu-af58e-default-rtdb.asia-southeast1.firebasedatabase.app'
+})
+
+# Setup Serial for fingerprint sensor
+serial_port = serial.Serial('/dev/serial0', baudrate=57600, timeout=1)
+fingerprint = Adafruit_Fingerprint(serial_port)
+
+# Setup GPIO for Relay
+RELAY_PIN = 17
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+GPIO.setup(RELAY_PIN, GPIO.OUT)
+GPIO.output(RELAY_PIN, GPIO.LOW)
+
+# File to store fingerprint ID to student ID and name mappings
+MAPPING_FILE = "fingerprint_mapping.csv"
+
+# Load the fingerprint to student name and NIM mappings
+def load_mappings():
+    mappings = {}
+    if os.path.exists(MAPPING_FILE):
+        with open(MAPPING_FILE, mode='r') as file:
+            reader = csv.reader(file)
+            for row in reader:
+                mappings[int(row[0])] = {'nim': row[1], 'nama': row[2]}
+    return mappings
+
+mappings = load_mappings()
+
+# Function to check fingerprint and return student's name and NIM
+def check_fingerprint():
+    print("Scan your finger...")
+    while True:
+        if fingerprint.get_image() == 0:  # FINGERPRINT_OK
+            fingerprint.image_2_tz()
+            if fingerprint.finger_search() == 0:  # FINGERPRINT_OK
+                fingerprint_id = fingerprint.finger_id
+                student_info = mappings.get(fingerprint_id, None)
+                if student_info:
+                    print(f"Akses Diberikan! Nama: {student_info['nama']}, NIM: {student_info['nim']}")
+                    return student_info['nama'], student_info['nim']
+                else:
+                    print(f"Access granted! But no student data mapped for fingerprint ID: {fingerprint_id}")
+                    return None, None
+            else:
+                print("Access denied. Please try again.")
+                return None, None
+        time.sleep(2)
+
+# Function to unlock door
+def unlock_door():
+    print("Unlocking the door...")
+    GPIO.output(RELAY_PIN, GPIO.HIGH)  # Turn on relay
+    time.sleep(5)  # Keep unlocked for 5 seconds
+    GPIO.output(RELAY_PIN, GPIO.LOW)   # Turn off relay
+    print("Locking the door...")
+
+# Function to log access attempts to Firebase
+def log_access(nim, nama):
+    ref = db.reference('access_logs')
+    ref.push({
+        'Nama': nim,
+        'NIM': nama,
+        'Waktu Akses': time.strftime('%Y-%m-%d %H:%M')
+    })
+
+# Main loop
+while True:
+    # Perform fingerprint scan and retrieve student details
+    nim, student_name = check_fingerprint()
+    if nim is not None and student_name is not None:
+        unlock_door()
+        log_access(nim, student_name)  # Log ke Firebase dengan Nama dan NIM dari sidik jari
+    time.sleep(1)
+
