@@ -35,6 +35,24 @@ class RelayController:
     Pylance warnings for missing modules are expected during development.
     """
     def __init__(self, relay_pin=18, led_pin=24, buzzer_pin=23):
+        """Initialize controller.
+        Defaults previously used relay_pin=18. Fingerprint reference (relay.txt) uses pin 17 and 5s unlock.
+        Allow overriding via environment variables RELAY_PIN / RELAY_DEFAULT_DURATION.
+        """
+        import os
+        # Prefer environment variable if provided, else keep backward compatible default argument.
+        env_relay_pin = os.getenv("RELAY_PIN")
+        if env_relay_pin is not None:
+            try:
+                relay_pin = int(env_relay_pin)
+            except ValueError:
+                print(f"[RELAY] Invalid RELAY_PIN env value '{env_relay_pin}', falling back to {relay_pin}")
+
+        # Align with relay.txt reference (pin 17). If user did not explicitly override (still default 18) choose 17.
+        if relay_pin == 18 and os.getenv("RELAY_PIN") is None:
+            # Switch to 17 for consistency with fingerprint implementation
+            relay_pin = 17
+
         self.relay_pin = relay_pin
         self.led_pin = led_pin
         self.buzzer_pin = buzzer_pin
@@ -76,6 +94,20 @@ class RelayController:
             duration: seconds to keep door open
             callback: function to call when door closes
         """
+        # If user wants default from fingerprint script (5 seconds), allow env override
+        import os
+        default_duration = os.getenv("RELAY_DEFAULT_DURATION")
+        if default_duration is not None:
+            try:
+                env_dur = float(default_duration)
+                if duration == 3:  # only replace if caller used default
+                    duration = env_dur
+            except ValueError:
+                print(f"[RELAY] Invalid RELAY_DEFAULT_DURATION '{default_duration}', using {duration}s")
+
+        # If duration still 3 (legacy default) switch to 5 to mirror relay.txt reference
+        if duration == 3 and default_duration is None:
+            duration = 5
         if self.gpio_initialized:
             # Real GPIO control
             try:

@@ -121,11 +121,13 @@ class LoginWindow:
         try:
             print("[LOGIN DEBUG] Executing login query...")
             
-            # Query to verify user credentials - check the correct table based on backend models
+            # Query to verify user credentials - allow students to login as well
+            # so they can capture and train their own face datasets.
+            # Note: We keep status filter to ensure only active users can log in.
             query = """
             SELECT user_id, fullname, role, password, status 
             FROM users 
-            WHERE email = %s AND status = 'active' AND role IN ('super-admin', 'lecturer')
+            WHERE email = %s AND status = 'active' AND role IN ('super-admin', 'lecturer', 'student')
             """
             
             print(f"[LOGIN DEBUG] Executing query with email: {email}")
@@ -138,9 +140,10 @@ class LoginWindow:
                 print(f"[LOGIN DEBUG] Stored password hash: {user['password'][:50]}...")
                 print(f"[LOGIN DEBUG] Input password: '{password}'")
                 
-                # Check if user is admin or lecturer (allowed roles)
-                if user['role'] not in ['super-admin', 'lecturer']:
-                    print("[LOGIN DEBUG] ❌ Access denied - User does not have admin privileges")
+                # Allow super-admin, lecturer, and student to log in.
+                # Admin/Lecturer will see the admin dataset UI; students get the self-service UI.
+                if user['role'] not in ['super-admin', 'lecturer', 'student']:
+                    print("[LOGIN DEBUG] ❌ Access denied - User role not permitted to use this app")
                     return False
                 
                 try:
@@ -724,8 +727,9 @@ class FaceAttendanceApp:
     def _train_model_thread(self, user_id, user_name):
         """Thread method for training model"""
         try:
-            # Check if dataset exists
-            dataset_dir = f"datasets/employee_{user_id}"
+            # Check if dataset exists (use same base path as face system)
+            ds_base = getattr(self.face_system, 'dataset_path', 'datasets')
+            dataset_dir = os.path.join(ds_base, f"employee_{user_id}")
             if not os.path.exists(dataset_dir):
                 self.log_message(f"Dataset tidak ditemukan untuk {user_name}")
                 self.window.after(0, lambda: messagebox.showerror("Error", f"Dataset tidak ditemukan untuk {user_name}. Capture dataset terlebih dahulu."))
@@ -903,14 +907,19 @@ class FaceAttendanceApp:
                     # If this face is recognized, show the name
                     if i < len(recognized_employees) and recognized_employees[i] is not None:
                         employee = recognized_employees[i]
-                        cv2.putText(frame, 
-                                  f"{employee['name']} ({employee['confidence']:.2f})", 
+                        # Show normalized and raw LBPH distance for debugging
+                        raw_info = f" d={employee.get('raw_confidence', 0):.1f}"
+                        cv2.putText(frame,
+                                  f"{employee['name']} ({employee['confidence']:.2f}){raw_info}", 
                                   (left, top - 10), 
                                   cv2.FONT_HERSHEY_SIMPLEX, 
                                   0.7, (0, 255, 0), 2)
                         
                         # Auto-mark attendance if confidence is high
-                        if employee['confidence'] > 0.6:
+                        # Trigger only if raw LBPH distance under threshold (consistent with recognizer)
+                        from simple_face_recognition import SimpleFaceRecognition
+                        threshold = self.face_system.lbph_threshold if hasattr(self.face_system, 'lbph_threshold') else 65
+                        if employee.get('raw_confidence', 1000) <= threshold:
                             # Check room access before marking attendance
                             access_result = self.verify_room_access_and_attendance(
                                 employee['employee_id'], 
@@ -1054,94 +1063,6 @@ class FaceAttendanceApp:
                 'success': False,
                 'reason': f'Error verifying access: {str(e)}'
             }
-        """
-        Dual function: Verify room access + mark attendance if not already marked
-        1. Check room access (always allowed if user has scheduled classes)
-        2. Mark attendance once per session
-        Returns: dict with success status and reason
-        """
-        try:
-            # First check if user has room access today
-            access_info = backend_api.check_user_room_access(employee_id)
-            
-            if not access_info:
-                # Log denied access attempt
-                backend_api.log_door_access(
-                    employee_id, 
-                    access_type='face_recognition',
-                    access_status='denied',
-                    confidence_score=confidence,
-                    reason='Cannot verify room access - backend unavailable'
-                )
-                return {
-                    'success': False,
-                    'reason': 'Tidak dapat memverifikasi akses ruangan'
-                }
-            
-            if not access_info.get('allowed', False):
-                # No room access - deny entry
-                backend_api.log_door_access(
-                    employee_id, 
-                    access_type='face_recognition',
-                    access_status='denied',
-                    confidence_score=confidence,
-                    reason=access_info.get('reason', 'No scheduled classes today')
-                )
-                return {
-                    'success': False,
-                    'reason': access_info.get('reason', 'Tidak ada jadwal kelas hari ini')
-                }
-            
-            # User HAS room access - proceed with dual function
-            
-            # Try to mark attendance (only if not already marked)
-            attendance_success, attendance_message = self.face_system.mark_attendance(employee_id, confidence)
-            
-            # Get session info for logging
-            sessions = access_info.get('sessions', [])
-            session_id = sessions[0].get('session_id') if sessions else None
-            
-            if attendance_success:
-                # First time entry today - attendance marked + door access granted
-                backend_api.log_door_access(
-                    employee_id, 
-                    access_type='face_recognition',
-                    access_status='granted',
-                    confidence_score=confidence,
-                    reason='Attendance marked + door access granted',
-                    session_id=session_id
-                )
-                
-                return {
-                    'success': True,
-                    'reason': f'Selamat datang {employee_name}! Absensi dicatat + Pintu dibuka',
-                    'action': 'attendance_and_door',
-                    'attendance_marked': True
-                }
-            else:
-                # Already marked attendance - but still grant door access
-                backend_api.log_door_access(
-                    employee_id, 
-                    access_type='face_recognition',
-                    access_status='granted',
-                    confidence_score=confidence,
-                    reason='Door access granted (attendance already marked)',
-                    session_id=session_id
-                )
-                
-                return {
-                    'success': True,
-                    'reason': f'Selamat datang kembali {employee_name}! Pintu dibuka',
-                    'action': 'door_only',
-                    'attendance_marked': False
-                }
-                
-        except Exception as e:
-            print(f"Error in verify_room_access_and_attendance: {e}")
-            return {
-                'success': False,
-                'reason': f'Error verifying access: {str(e)}'
-            }
         
     def log_recognition(self, message):
         """Log message to recognition info"""
@@ -1161,10 +1082,13 @@ class FaceAttendanceApp:
             def door_closed_callback():
                 self.log_recognition("🔒 Pintu ditutup kembali")
             
-            success = activate_door(duration=3, callback=door_closed_callback)
+            # Referensi perilaku dari relay.txt (fingerprint): menggunakan PIN 17 dan durasi 5 detik
+            # Di relay_control kita sudah buat default bisa di override via env.
+            # Di sini kita eksplisit set duration=5 agar konsisten dengan sistem fingerprint.
+            success = activate_door(duration=5, callback=door_closed_callback)
             
             if success:
-                self.log_recognition("🔓 Pintu dibuka untuk 3 detik")
+                self.log_recognition("🔓 Pintu dibuka selama 5 detik")
                 success_beep()  # Play success sound
             else:
                 self.log_recognition("⚠️ Error mengaktifkan relay pintu")
@@ -1214,12 +1138,13 @@ class FaceAttendanceApp:
             messagebox.showerror("Error", "Akun Anda belum terdaftar sebagai karyawan. Hubungi administrator.")
             return
         
-        # Check if dataset exists
-        dataset_dir = f"datasets/employee_{self.current_employee_id}"
+        # Check if dataset exists (use same base path as face system)
+        ds_base = getattr(self.face_system, 'dataset_path', 'datasets')
+        dataset_dir = os.path.join(ds_base, f"employee_{self.current_employee_id}")
         if not os.path.exists(dataset_dir):
             messagebox.showerror("Error", "Dataset tidak ditemukan. Capture dataset terlebih dahulu.")
             return
-            
+        
         def train_thread():
             self.log_process(f"Memulai training model untuk {self.current_employee_name}...")
             

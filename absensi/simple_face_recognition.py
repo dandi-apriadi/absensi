@@ -14,6 +14,12 @@ class SimpleFaceRecognition:
         self.dataset_path = "datasets"
         self.models_path = "models"
         self.temp_path = "temp"
+        # LBPH returns lower value = better match. Typical good range < 60-70.
+        # Make threshold configurable via env var LBPH_CONFIDENCE_THRESHOLD, default 65.
+        try:
+            self.lbph_threshold = float(os.environ.get('LBPH_CONFIDENCE_THRESHOLD', '65'))
+        except Exception:
+            self.lbph_threshold = 65.0
         
         # Create directories if they don't exist
         os.makedirs(self.dataset_path, exist_ok=True)
@@ -22,6 +28,37 @@ class SimpleFaceRecognition:
         
         # Initialize database tables
         self.init_database()
+
+    def _resolve_path(self, p: str) -> str:
+        """Resolve potentially relative/Windows path to an absolute existing path.
+        Tries a few candidates relative to this module's directory and current CWD.
+        """
+        try:
+            if not p:
+                return p
+            # Strip whitespace and normalize separators
+            p = str(p).strip().replace('\\', os.sep).replace('/', os.sep)
+            # If already absolute and exists, return
+            if os.path.isabs(p) and os.path.exists(p):
+                return p
+            # Build candidates
+            candidates = []
+            # As-is relative to CWD
+            candidates.append(os.path.abspath(p))
+            # Relative to this file's directory
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            candidates.append(os.path.abspath(os.path.join(base_dir, p)))
+            # If path includes a folder and filename, also try under models_path
+            if not os.path.isabs(p):
+                candidates.append(os.path.abspath(os.path.join(base_dir, self.models_path, os.path.basename(p))))
+            # Return first existing candidate
+            for c in candidates:
+                if os.path.exists(c):
+                    return c
+            # Fallback to original absolute of p (even if missing) for logging
+            return candidates[0]
+        except Exception:
+            return p
         
     def init_database(self):
         """Initialize required database tables"""
@@ -186,30 +223,21 @@ class SimpleFaceRecognition:
             import uuid
             current_time = datetime.now()
             model_id = str(uuid.uuid4())
-            
-            # Check if model already exists for this employee
-            check_query = "SELECT id FROM face_training WHERE employee_id = %s"
-            existing = simple_db.execute_query(check_query, (employee_id,))
-            
-            if existing:
-                # Update existing record
-                query = """
-                UPDATE face_training 
-                SET model_id = %s, training_images_count = %s, model_path = %s, 
-                    status = %s, updated_at = %s
-                WHERE employee_id = %s
-                """
-                params = (model_id, len(faces), model_path, 'active', current_time, employee_id)
-                print(f"Updating existing model for employee {employee_id}")
-            else:
-                # Insert new record
-                query = """
-                INSERT INTO face_training (employee_id, model_id, training_images_count, 
-                                         model_path, status, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """
-                params = (employee_id, model_id, len(faces), model_path, 'active', current_time, current_time)
-                print(f"Creating new model for employee {employee_id}")
+
+            # Upsert to avoid duplicate key issues on unique employee_id
+            query = """
+            INSERT INTO face_training (
+                employee_id, model_id, training_images_count, model_path, status, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                model_id = VALUES(model_id),
+                training_images_count = VALUES(training_images_count),
+                model_path = VALUES(model_path),
+                status = VALUES(status),
+                updated_at = VALUES(updated_at)
+            """
+            params = (employee_id, model_id, len(faces), model_path, 'active', current_time, current_time)
+            print(f"Upserting model for employee {employee_id}")
             
             result = simple_db.execute_query(query, params)
             
@@ -230,34 +258,6 @@ class SimpleFaceRecognition:
                 return False
                 
         except Exception as e:
-            if "Duplicate entry" in str(e) or "IntegrityError" in str(e):
-                print(f"Model already exists for employee {employee_id}, attempting to update...")
-                # Force update the existing record
-                try:
-                    current_time = datetime.now()
-                    update_query = """
-                    UPDATE face_training 
-                    SET training_images_count = %s, model_path = %s, 
-                        status = %s, updated_at = %s
-                    WHERE employee_id = %s
-                    """
-                    update_params = (len(faces), model_path, 'active', current_time, employee_id)
-                    result = simple_db.execute_query(update_query, update_params)
-                    if result:
-                        print(f"Successfully updated existing model for employee {employee_id}")
-                        
-                        # Cleanup dataset folder after successful update
-                        print("🧹 Cleaning up dataset folder...")
-                        cleanup_success = self.cleanup_dataset_folder(employee_id)
-                        if cleanup_success:
-                            print(f"✅ Model update completed with automatic cleanup for {employee_id}")
-                        else:
-                            print(f"⚠️  Model update completed but cleanup failed for {employee_id}")
-                        
-                        return True
-                except Exception as update_error:
-                    print(f"Failed to update existing model: {update_error}")
-            
             print(f"Error training model: {e}")
             return False
     
@@ -369,25 +369,71 @@ class SimpleFaceRecognition:
             
             if results:
                 self.known_faces = {}
+                loaded = 0
+                skipped = 0
                 
                 for row in results:
                     try:
                         # Load the trained model file
-                        if os.path.exists(row['model_path']):
+                        # Resolve model path robustly
+                        model_path = self._resolve_path(row['model_path'])
+                        if not os.path.exists(model_path):
+                            # Fallback: construct path from employee_id
+                            eid = str(row['employee_id']).strip()
+                            candidate = os.path.join(self.models_path, f"employee_{eid}_model.yml")
+                            model_path = self._resolve_path(candidate)
+
+                        if os.path.exists(model_path):
                             recognizer = cv2.face.LBPHFaceRecognizer_create()
-                            recognizer.read(row['model_path'])
-                            
+                            recognizer.read(model_path)
                             self.known_faces[row['employee_id']] = {
                                 'name': row['fullname'],
                                 'recognizer': recognizer
                             }
+                            loaded += 1
+                        else:
+                            print(f"Model file not found, skipping: {model_path}")
+                            skipped += 1
                         
                     except Exception as e:
                         print(f"Error loading model for employee {row['employee_id']}: {e}")
+                        skipped += 1
                         continue
                         
-                print(f"Loaded {len(self.known_faces)} face models")
-                return True
+                # Fallback scan: load any models present in models directory
+                try:
+                    import glob
+                    pattern = os.path.join(self.models_path, "employee_*_model.yml")
+                    for path in glob.glob(pattern):
+                        try:
+                            filename = os.path.basename(path)
+                            # Extract employee_id between employee_ and _model.yml
+                            start = len("employee_")
+                            end = filename.rfind("_model.yml")
+                            if end > start:
+                                eid = filename[start:end]
+                                if eid not in self.known_faces:
+                                    # Lookup fullname from users table
+                                    user_rows = simple_db.execute_query(
+                                        "SELECT fullname FROM users WHERE user_id = %s",
+                                        (eid,)
+                                    )
+                                    fullname = user_rows[0]['fullname'] if user_rows else eid
+                                    recognizer = cv2.face.LBPHFaceRecognizer_create()
+                                    recognizer.read(path)
+                                    self.known_faces[eid] = {
+                                        'name': fullname,
+                                        'recognizer': recognizer
+                                    }
+                                    loaded += 1
+                        except Exception as e:
+                            print(f"Fallback scan load error for {path}: {e}")
+                            continue
+                except Exception as e:
+                    print(f"Fallback scan error: {e}")
+
+                print(f"Loaded {loaded} face models, skipped {skipped}")
+                return loaded > 0
             else:
                 print("No face models found in database")
                 return False
@@ -418,22 +464,26 @@ class SimpleFaceRecognition:
             face_resized = cv2.resize(face_roi, (200, 200))
             
             best_match = None
-            best_confidence = float('inf')
+            best_raw_confidence = float('inf')  # raw LBPH distance (lower is better)
             
             # Try to recognize with each trained model
             for employee_id, face_data in self.known_faces.items():
                 try:
                     recognizer = face_data['recognizer']
-                    label, confidence = recognizer.predict(face_resized)
-                    
-                    # Lower confidence means better match in OpenCV LBPH
-                    if confidence < best_confidence and confidence < 100:  # Threshold
-                        best_confidence = confidence
+                    label, raw_conf = recognizer.predict(face_resized)
+
+                    # Keep the lowest raw distance across models
+                    if raw_conf < best_raw_confidence:
+                        # Provide a normalized confidence for UI (0..1), higher is better
+                        # Using 1 - raw/100 keeps previous UI behavior
+                        normalized = max(0.0, min(1.0, 1.0 - (raw_conf / 100.0)))
+                        best_raw_confidence = raw_conf
                         best_match = {
                             'employee_id': employee_id,
                             'name': face_data['name'],
-                            'confidence': 1 - (confidence / 100),  # Convert to 0-1 scale
-                            'face_location': (x, y, x+w, y+h)  # Store face location with recognition
+                            'confidence': normalized,
+                            'raw_confidence': raw_conf,
+                            'face_location': (x, y, x+w, y+h)
                         }
                         
                 except Exception as e:
@@ -441,7 +491,8 @@ class SimpleFaceRecognition:
                     continue
                     
             # Add recognized employee (or None for unknown faces)
-            if best_match and best_match['confidence'] > 0.3:  # Minimum confidence
+            # Decide known/unknown based on LBPH raw distance threshold
+            if best_match and best_raw_confidence <= self.lbph_threshold:
                 recognized_employees.append(best_match)
             else:
                 recognized_employees.append(None)  # Unknown face

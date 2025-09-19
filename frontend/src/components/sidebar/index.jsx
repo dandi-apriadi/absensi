@@ -197,54 +197,38 @@ const Sidebar = ({ onClose }) => {
 
             {/* Clean Minimal User Profile */}
             <div className="px-4 py-4 border-b border-gray-200 dark:border-slate-700">
-              {isLoading ? (
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-slate-700 animate-pulse"></div>
-                  <div className="flex-1 min-w-0 space-y-2">
-                    <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded animate-pulse"></div>
-                    <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded animate-pulse w-16"></div>
-                  </div>
+              <div className="flex items-center space-x-3">
+                {/* Simple Clean Avatar */}
+                <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden border-2 border-gray-200 dark:border-slate-600">
+                  {user?.profile_picture && user.profile_picture !== 'default-profile.png' ? (
+                    <img
+                      src={user.profile_picture}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <FaUserCircle className="h-6 w-6 text-gray-400" />
+                  )}
                 </div>
-              ) : (
-                <div className="flex items-center space-x-3">
-                  {/* Simple Clean Avatar */}
-                  <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden border-2 border-gray-200 dark:border-slate-600">
-                    {user?.profile_picture && user.profile_picture !== 'default-profile.png' ? (
-                      <img
-                        src={user.profile_picture}
-                        alt="Profile"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <FaUserCircle className="h-6 w-6 text-gray-400" />
-                    )}
-                  </div>
 
-                  {/* Clean User Details */}
-                  <div className="flex-1 min-w-0">
-                    {/* User Name Row */}
-                    <div className="flex items-center space-x-2 mb-1">                      <h3 className="font-semibold text-gray-900 dark:text-white text-sm truncate">
+                {/* Clean User Details */}
+                <div className="flex-1 min-w-0">
+                  {/* User Name Row */}
+                  <div className="flex items-center space-x-2 mb-1">
+                    <h3 className="font-semibold text-gray-900 dark:text-white text-sm truncate">
                       {user?.name && user.name !== '-' ? user.name : user?.email?.split('@')[0] || 'Guest User'}
                     </h3>
-                      {user?.verified && (
-                        <div className="w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center">
-                          <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Simple Role Badge */}
-                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${user?.role === 'super-admin'
-                      ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800'
-                      : 'bg-green-50 text-green-700 border border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800'
-                      }`}>
-                      {user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1) || 'Guest'}
-                    </span>
                   </div>
+
+                  {/* Simple Role Badge */}
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${user?.role === 'super-admin'
+                    ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800'
+                    : 'bg-green-50 text-green-700 border border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800'
+                    }`}>
+                    {user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1) || 'Guest'}
+                  </span>
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Simple Page Title */}
@@ -276,13 +260,7 @@ const Sidebar = ({ onClose }) => {
             {/* Simple Navigation Links */}
             <div className="flex-1 px-2 pb-4 overflow-hidden">
               <div className="h-full overflow-y-auto pr-2">
-                {isLoading ? (
-                  <div className="space-y-2">
-                    {[...Array(5)].map((_, i) => (
-                      <div key={i} className="h-12 bg-gray-100 dark:bg-slate-800 rounded-lg animate-pulse"></div>
-                    ))}
-                  </div>
-                ) : Array.isArray(routes) && routes.length > 0 ? (
+                {Array.isArray(routes) && routes.length > 0 ? (
                   <SidebarLinks routes={routes} />
                 ) : (
                   <div className="text-center py-6 px-3">
@@ -305,12 +283,9 @@ const Sidebar = ({ onClose }) => {
             {/* Simple Footer */}
             <div className="px-4 py-3 border-t border-gray-200 dark:border-slate-700">
               <div className="text-center">
-                <div className="flex items-center justify-center space-x-2 mb-1">
-                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    System Online
-                  </p>
-                </div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  System Online
+                </p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
                   © 2025 SiAbsensi v2.0
                 </p>

@@ -103,16 +103,6 @@ export function SidebarLinks(props) {
                 `}>
                   {mainRoute.name}
                 </p>
-                {hasSubRoutes && (
-                  <p className={`text-xs mt-0.5 ${isMainActive
-                    ? 'text-white/70'
-                    : hasActiveSubRoute
-                      ? 'text-indigo-600/80 dark:text-indigo-400/80'
-                      : 'text-gray-500 dark:text-gray-400'
-                    }`}>
-                    {subRoutesByParent[mainRoute.path].length} items
-                  </p>
-                )}
               </div>
 
               {/* Clean expand indicator */}
