@@ -626,193 +626,85 @@ const ClassAccessDetail = () => {
                         )}
                     </div>
 
-                    {/* Attendance History - Enhanced */}
-                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-8 hover:shadow-2xl transition-all duration-300" data-aos="fade-up" data-aos-delay="200">
-                        <div className="flex items-center justify-between mb-8">
-                            <div className="flex items-center">
-                                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center mr-4 shadow-lg">
-                                    <MdHistory className="w-6 h-6 text-white" />
-                                </div>
-                                <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Riwayat Absensi</h2>
-                            </div>
-                            <div className="flex items-center space-x-3">
+                    {/* Attendance History - Minimal Table */}
+                    <div className="bg-white rounded-xl border border-slate-200 p-6" data-aos="fade-up" data-aos-delay="200">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold text-slate-800">Riwayat Absensi</h2>
+                            <div className="flex items-center gap-2">
                                 <button
                                     onClick={fetchAttendanceData}
                                     disabled={loadingAttendance}
-                                    className="inline-flex items-center px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white/80 border border-slate-300 rounded-xl hover:bg-slate-50 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                    className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
                                 >
-                                    <MdRefresh className={`w-4 h-4 mr-2 ${loadingAttendance ? 'animate-spin' : ''}`} />
-                                    {loadingAttendance ? 'Memuat...' : 'Refresh'}
+                                    <MdRefresh className={`w-4 h-4 mr-1 ${loadingAttendance ? 'animate-spin' : ''}`} />
+                                    {loadingAttendance ? 'Memuat' : 'Refresh'}
                                 </button>
                                 {attendanceData && attendanceData.length > 0 && (
                                     <button
                                         onClick={handleDownloadAttendance}
-                                        className="inline-flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-600 to-green-700 border border-transparent rounded-xl hover:from-emerald-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50"
                                     >
-                                        <MdDownload className="w-4 h-4 mr-2" />
-                                        Unduh Data
+                                        <MdDownload className="w-4 h-4 mr-1" />
+                                        Unduh CSV
                                     </button>
                                 )}
                             </div>
                         </div>
 
-                        {/* Attendance Stats Cards - Enhanced */}
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                            <div className="bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 rounded-2xl p-6 text-center border border-blue-200/60 hover:shadow-lg transition-all duration-300 group">
-                                <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                                    <MdCalendarToday className="w-7 h-7 text-white" />
-                                </div>
-                                <div className="text-3xl font-bold text-blue-700 mb-2">{attendanceStats.totalSessions}</div>
-                                <div className="text-sm font-semibold text-blue-800 uppercase tracking-wide">Total Sesi</div>
-                            </div>
-                            <div className="bg-gradient-to-br from-emerald-50 via-green-100 to-emerald-200 rounded-2xl p-6 text-center border border-emerald-200/60 hover:shadow-lg transition-all duration-300 group">
-                                <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                                    <MdCheckCircle className="w-7 h-7 text-white" />
-                                </div>
-                                <div className="text-3xl font-bold text-emerald-700 mb-2">{attendanceStats.presentCount}</div>
-                                <div className="text-sm font-semibold text-emerald-800 uppercase tracking-wide">Hadir</div>
-                            </div>
-                            <div className="bg-gradient-to-br from-amber-50 via-yellow-100 to-orange-200 rounded-2xl p-6 text-center border border-amber-200/60 hover:shadow-lg transition-all duration-300 group">
-                                <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                                    <MdSchedule className="w-7 h-7 text-white" />
-                                </div>
-                                <div className="text-3xl font-bold text-amber-700 mb-2">{attendanceStats.lateCount}</div>
-                                <div className="text-sm font-semibold text-amber-800 uppercase tracking-wide">Terlambat</div>
-                            </div>
-                            <div className="bg-gradient-to-br from-red-50 via-rose-100 to-red-200 rounded-2xl p-6 text-center border border-red-200/60 hover:shadow-lg transition-all duration-300 group">
-                                <div className="w-14 h-14 bg-gradient-to-br from-red-500 to-rose-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                                    <MdCancel className="w-7 h-7 text-white" />
-                                </div>
-                                <div className="text-3xl font-bold text-red-700 mb-2">{attendanceStats.absentCount}</div>
-                                <div className="text-sm font-semibold text-red-800 uppercase tracking-wide">Tidak Hadir</div>
-                            </div>
+                        {/* Compact summary chips */}
+                        <div className="flex flex-wrap items-center gap-2 mb-4">
+                            <span className="px-2.5 py-1 text-xs font-medium text-slate-700 border border-slate-300 rounded-md">Total Sesi: {attendanceStats.totalSessions}</span>
+                            <span className="px-2.5 py-1 text-xs font-medium text-slate-700 border border-slate-300 rounded-md">Hadir: {attendanceStats.presentCount}</span>
+                            <span className="px-2.5 py-1 text-xs font-medium text-slate-700 border border-slate-300 rounded-md">Terlambat: {attendanceStats.lateCount}</span>
+                            <span className="px-2.5 py-1 text-xs font-medium text-slate-700 border border-slate-300 rounded-md">Tidak Hadir: {attendanceStats.absentCount}</span>
                         </div>
-                        
+
                         {loadingAttendance ? (
-                            <div className="text-center py-16 bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl border-2 border-dashed border-slate-300">
-                                <div className="relative mb-8">
-                                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl mx-auto flex items-center justify-center shadow-2xl">
-                                        <MdHistory className="w-8 h-8 text-white" />
-                                    </div>
-                                    <div className="absolute inset-0 w-16 h-16 mx-auto border-4 border-blue-200 rounded-2xl animate-pulse"></div>
-                                    <div className="absolute inset-0 w-16 h-16 mx-auto">
-                                        <div className="w-full h-full border-4 border-transparent border-t-blue-600 rounded-2xl animate-spin"></div>
-                                    </div>
-                                </div>
-                                <h3 className="text-xl font-bold text-slate-700 mb-3">Memuat Data Absensi</h3>
-                                <p className="text-slate-500 mb-6 max-w-md mx-auto">Sedang mengambil riwayat absensi mahasiswa dari database. Mohon tunggu sebentar...</p>
-                                <div className="flex justify-center space-x-2">
-                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                                </div>
-                            </div>
+                            <div className="py-10 text-center text-slate-600 text-sm">Memuat data absensi...</div>
                         ) : attendanceData && attendanceData.length > 0 ? (
-                            <div className="space-y-6 max-h-96 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-400 scrollbar-track-slate-200">
-                                {attendanceData.map((attendance, index) => (
-                                    <div key={index} className="group relative overflow-hidden bg-white/60 backdrop-blur-sm rounded-2xl border border-white/40 hover:border-blue-300/60 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-                                        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 to-indigo-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                                        <div className="relative p-6">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center space-x-5">
-                                                    {/* Enhanced Avatar */}
-                                                    <div className={`relative w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white text-xl shadow-xl transform group-hover:scale-110 transition-transform duration-300 ${
-                                                        attendance.status === 'present' ? 'bg-gradient-to-br from-emerald-400 to-green-600' :
-                                                        attendance.status === 'late' ? 'bg-gradient-to-br from-amber-400 to-orange-600' :
-                                                        'bg-gradient-to-br from-red-400 to-rose-600'
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full text-sm">
+                                    <thead className="bg-slate-50 border-b border-slate-200">
+                                        <tr>
+                                            <th className="px-3 py-2 text-left font-semibold text-slate-700">No</th>
+                                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Nama</th>
+                                            <th className="px-3 py-2 text-left font-semibold text-slate-700">NIM</th>
+                                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Status</th>
+                                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Sesi</th>
+                                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Tanggal</th>
+                                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Check-in</th>
+                                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Metode</th>
+                                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Confidence</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200">
+                                        {attendanceData.map((attendance, index) => (
+                                            <tr key={index} className="hover:bg-slate-50">
+                                                <td className="px-3 py-2 text-slate-700">{index + 1}</td>
+                                                <td className="px-3 py-2 text-slate-800">{attendance.student_name}</td>
+                                                <td className="px-3 py-2 text-slate-700">{attendance.student_number || attendance.student_id}</td>
+                                                <td className="px-3 py-2">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded ${
+                                                        attendance.status === 'present' ? 'bg-slate-100 text-slate-800' :
+                                                        attendance.status === 'late' ? 'bg-slate-100 text-slate-800' : 'bg-slate-100 text-slate-800'
                                                     }`}>
-                                                        {attendance.student_name?.charAt(0)?.toUpperCase() || 'M'}
-                                                        <div className="absolute inset-0 bg-white/20 rounded-2xl animate-pulse opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                                                    </div>
-                                                    
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center space-x-3 mb-2">
-                                                            <h4 className="font-bold text-slate-900 text-xl truncate">{attendance.student_name}</h4>
-                                                            <span className={`inline-flex items-center px-3 py-1 rounded-xl text-xs font-bold shadow-sm ${
-                                                                attendance.status === 'present' 
-                                                                    ? 'bg-gradient-to-r from-emerald-100 to-green-100 text-emerald-800 border border-emerald-200'
-                                                                    : attendance.status === 'late'
-                                                                        ? 'bg-gradient-to-r from-amber-100 to-orange-100 text-amber-800 border border-amber-200'
-                                                                        : 'bg-gradient-to-r from-red-100 to-rose-100 text-red-800 border border-red-200'
-                                                            }`}>
-                                                                {attendance.status === 'present' ? 'HADIR' : 
-                                                                 attendance.status === 'late' ? 'TERLAMBAT' : 'TIDAK HADIR'}
-                                                            </span>
-                                                        </div>
-                                                        
-                                                        <p className="text-sm text-slate-600 font-semibold mb-1">{attendance.student_number || attendance.student_id}</p>
-                                                        <p className="text-xs text-slate-500 bg-slate-100 rounded-lg px-3 py-1 inline-block">
-                                                            Sesi {attendance.session_number} - {attendance.session_topic}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="text-right space-y-2 min-w-0">
-                                                    <p className="text-sm font-bold text-slate-900 bg-slate-100 rounded-lg px-3 py-1">
-                                                        {formatDate(attendance.session_date)}
-                                                    </p>
-                                                    <p className="text-xl font-bold text-blue-600">
-                                                        {attendance.check_in_time ? formatTime(attendance.check_in_time) : '-'}
-                                                    </p>
-                                                    
-                                                    <div className="flex items-center justify-end space-x-2 mt-3">
-                                                        {attendance.attendance_method && (
-                                                            <span className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold bg-white/80 text-slate-700 border border-slate-200 shadow-sm">
-                                                                {attendance.attendance_method === 'face_recognition' ? (
-                                                                    <>
-                                                                        <MdFace className="w-3 h-3 mr-1" />
-                                                                        Face ID
-                                                                    </>
-                                                                ) : attendance.attendance_method === 'manual' ? (
-                                                                    <>
-                                                                        <MdEdit className="w-3 h-3 mr-1" />
-                                                                        Manual
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <MdQrCode className="w-3 h-3 mr-1" />
-                                                                        QR Code
-                                                                    </>
-                                                                )}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    
-                                                    {attendance.confidence_score && (
-                                                        <div className="flex items-center justify-end mt-2">
-                                                            <span className="text-xs text-slate-500 font-medium mr-1">Confidence: </span>
-                                                            <span className={`text-xs font-bold px-2 py-1 rounded-md ${
-                                                                attendance.confidence_score >= 0.8 ? 'bg-emerald-100 text-emerald-700' :
-                                                                attendance.confidence_score >= 0.6 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                                                            }`}>
-                                                                {(attendance.confidence_score * 100).toFixed(1)}%
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
+                                                        {attendance.status === 'present' ? 'Hadir' : attendance.status === 'late' ? 'Terlambat' : 'Tidak Hadir'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2 text-slate-700">{attendance.session_number} - {attendance.session_topic || '-'}</td>
+                                                <td className="px-3 py-2 text-slate-700">{formatDate(attendance.session_date)}</td>
+                                                <td className="px-3 py-2 text-slate-700">{attendance.check_in_time ? formatTime(attendance.check_in_time) : '-'}</td>
+                                                <td className="px-3 py-2 text-slate-700">
+                                                    {attendance.attendance_method === 'face_recognition' ? 'Face ID' : attendance.attendance_method === 'manual' ? 'Manual' : 'QR Code'}
+                                                </td>
+                                                <td className="px-3 py-2 text-slate-700">{attendance.confidence_score ? `${(attendance.confidence_score * 100).toFixed(1)}%` : '-'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         ) : (
-                            <div className="text-center py-16 bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl border-2 border-dashed border-slate-300">
-                                <div className="w-24 h-24 bg-gradient-to-br from-slate-200 to-slate-300 rounded-3xl mx-auto mb-8 flex items-center justify-center shadow-xl">
-                                    <MdHistory className="w-12 h-12 text-slate-500" />
-                                </div>
-                                <h3 className="text-2xl font-bold text-slate-700 mb-4">Belum Ada Data Absensi</h3>
-                                <div className="max-w-md mx-auto space-y-3">
-                                    <p className="text-slate-500 leading-relaxed">Data absensi akan muncul setelah mahasiswa melakukan check-in menggunakan sistem face recognition atau QR code.</p>
-                                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mt-6">
-                                        <h4 className="font-semibold text-blue-800 mb-2">Tips untuk Administrator:</h4>
-                                        <ul className="text-sm text-blue-700 space-y-1 text-left">
-                                            <li>• Pastikan sistem face recognition sudah aktif</li>
-                                            <li>• Verify mahasiswa sudah terdaftar dalam sistem</li>
-                                            <li>• Check jadwal perkuliahan sudah sesuai</li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
+                            <div className="py-10 text-center text-slate-600 text-sm">Belum ada data absensi.</div>
                         )}
                     </div>
                 </div>
