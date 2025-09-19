@@ -61,34 +61,60 @@ class BackendAPI:
             print(f"[BACKEND API] Checking access for {user_id}")
             print(f"[BACKEND API] Current day: {current_day_en} ({current_day_id})")
             print(f"[BACKEND API] Current time: {current_time}")
-            
+
             # Check if user is enrolled in any classes with schedule for today
-            query = """
+            # Using schema: student_enrollments.class_id
+            query1 = """
             SELECT 
                 cc.id as class_id,
                 cc.class_name,
                 cc.schedule,
                 c.course_name,
-                c.course_code
+                c.course_code,
+                se.status as enrollment_status
             FROM course_classes cc
             JOIN courses c ON cc.course_id = c.id
             JOIN student_enrollments se ON cc.id = se.class_id
             WHERE se.student_id = %s 
-            AND cc.status = 'active'
-            AND se.status = 'enrolled'
+              AND cc.status IN ('active','ongoing')
+              AND se.status IN ('enrolled','active')
             """
-            
-            result = simple_db.execute_query(query, (user_id,))
+
+            result = simple_db.execute_query(query1, (user_id,))
             
             if not result:
-                print(f"[BACKEND API] No enrolled classes found for user {user_id}")
-                return {
-                    'allowed': False,
-                    'classes': [],
-                    'reason': 'No enrolled classes found'
-                }
+                print(f"[BACKEND API] No enrolled/active classes found for user {user_id}")
+                # Optional: allow lecturers if they have a scheduled class now
+                try:
+                    lecturer_query = """
+                    SELECT 
+                        cc.id as class_id,
+                        cc.class_name,
+                        cc.schedule,
+                        c.course_name,
+                        c.course_code
+                    FROM course_classes cc
+                    JOIN courses c ON cc.course_id = c.id
+                    WHERE cc.lecturer_id = %s AND cc.status IN ('active','ongoing')
+                    """
+                    lec = simple_db.execute_query(lecturer_query, (user_id,))
+                    if not lec:
+                        return {
+                            'allowed': False,
+                            'classes': [],
+                            'reason': 'No enrolled classes found'
+                        }
+                    else:
+                        result = lec
+                        print(f"[BACKEND API] Lecturer mode: found {len(result)} classes for lecturer {user_id}")
+                except Exception as e:
+                    return {
+                        'allowed': False,
+                        'classes': [],
+                        'reason': 'No enrolled classes found'
+                    }
             
-            print(f"[BACKEND API] Found {len(result)} enrolled classes")
+            print(f"[BACKEND API] Found {len(result)} enrolled/active classes")
             
             # Check if any class has schedule for current day and time
             has_access = False
@@ -124,11 +150,31 @@ class BackendAPI:
                     if not isinstance(slot, dict):
                         print(f"[BACKEND API] Invalid slot format: {slot}")
                         continue
-                    day_match = slot.get('day') == current_day_id or slot.get('day') == current_day_en
+                    # Normalize possible keys and cases: 'day', 'day_of_week', localized strings
+                    slot_day = slot.get('day') or slot.get('day_of_week') or ''
+                    slot_day_norm = str(slot_day).strip().lower()
+                    # Accept English or Indonesian names (lowercased)
+                    day_variants = {
+                        'monday': ['monday', 'senin'],
+                        'tuesday': ['tuesday', 'selasa'],
+                        'wednesday': ['wednesday', 'rabu'],
+                        'thursday': ['thursday', 'kamis'],
+                        'friday': ['friday', 'jumat', 'jum\u2019at', "jum'at"],
+                        'saturday': ['saturday', 'sabtu'],
+                        'sunday': ['sunday', 'minggu']
+                    }
+                    # Build today's acceptable tokens
+                    today_tokens = []
+                    en_token = current_day_en.lower()
+                    id_token = current_day_id.lower()
+                    today_tokens.extend(day_variants.get(en_token, [en_token]))
+                    if id_token not in today_tokens:
+                        today_tokens.append(id_token)
+                    day_match = slot_day_norm in today_tokens
                     
                     if day_match:
-                        start_time = slot.get('start_time', '')
-                        end_time = slot.get('end_time', '')
+                        start_time = str(slot.get('start_time', '')).strip()
+                        end_time = str(slot.get('end_time', '')).strip()
                         
                         print(f"[BACKEND API] Checking time: {current_time} between {start_time} - {end_time}")
                         
@@ -152,9 +198,17 @@ class BackendAPI:
             
             if has_access:
                 print(f"[BACKEND API] ✅ Access granted for user {user_id}")
+                # Provide sessions array for compatibility with callers expecting it
+                sessions = [{
+                    'session_id': None,
+                    'class_id': item['class_id'],
+                    'start_time': item['start_time'],
+                    'end_time': item['end_time']
+                } for item in access_info]
                 return {
                     'allowed': True,
                     'classes': access_info,
+                    'sessions': sessions,
                     'reason': 'Has active class schedule now'
                 }
             else:
@@ -439,8 +493,10 @@ class BackendAPI:
                 print(f"[BACKEND API] Access logged successfully for user {user_id}")
                 return True
             else:
-                print(f"[BACKEND API] Error logging access: {response.status_code}")
-                return False
+                # If backend returns non-200 (e.g., 404), fall back to DB logging
+                print(f"[BACKEND API] Error logging access: {response.status_code}, falling back to DB log")
+                return self._log_access_fallback(user_id, access_type, access_status, 
+                                               confidence_score, reason, session_id)
                 
         except Exception as e:
             print(f"[BACKEND API] Request error logging access: {e}")

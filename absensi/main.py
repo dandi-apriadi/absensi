@@ -200,6 +200,9 @@ class FaceAttendanceApp:
         
         # Get employee info for current user
         self.get_current_employee_info()
+        # Track last recognition trigger time per user to avoid spamming
+        self._last_recognition_trigger = {}
+        self._recognition_cooldown_sec = 3.0
         
         self.setup_ui()
         
@@ -907,46 +910,29 @@ class FaceAttendanceApp:
                     # If this face is recognized, show the name
                     if i < len(recognized_employees) and recognized_employees[i] is not None:
                         employee = recognized_employees[i]
-                        # Show normalized and raw LBPH distance for debugging
-                        raw_info = f" d={employee.get('raw_confidence', 0):.1f}"
+                        # Show only name and normalized confidence (remove raw distance display)
                         cv2.putText(frame,
-                                  f"{employee['name']} ({employee['confidence']:.2f}){raw_info}", 
+                                  f"{employee['name']} ({employee['confidence']:.2f})", 
                                   (left, top - 10), 
                                   cv2.FONT_HERSHEY_SIMPLEX, 
                                   0.7, (0, 255, 0), 2)
                         
-                        # Auto-mark attendance if confidence is high
-                        # Trigger only if raw LBPH distance under threshold (consistent with recognizer)
-                        from simple_face_recognition import SimpleFaceRecognition
+                        # Auto-mark attendance if raw LBPH distance under threshold
                         threshold = self.face_system.lbph_threshold if hasattr(self.face_system, 'lbph_threshold') else 65
-                        if employee.get('raw_confidence', 1000) <= threshold:
-                            # Check room access before marking attendance
-                            access_result = self.verify_room_access_and_attendance(
-                                employee['employee_id'], 
-                                employee['name'],
-                                employee['confidence']
-                            )
-                            
-                            if access_result['success']:
-                                # Log dengan pesan yang lebih jelas
-                                if access_result.get('action') == 'attendance_and_door':
-                                    self.log_recognition(f"✅ {access_result['reason']}")
-                                    # Aktivasi relay untuk pintu
-                                    self.activate_door_relay()
-                                elif access_result.get('action') == 'door_only':
-                                    self.log_recognition(f"🚪 {access_result['reason']}")
-                                    # Aktivasi relay untuk pintu
-                                    self.activate_door_relay()
-                                else:
-                                    self.log_recognition(f"✅ Akses diberikan: {employee['name']}")
-                                    self.activate_door_relay()
-                                
-                                # Refresh attendance display
-                                self.window.after(0, self.refresh_attendance_data)
-                            else:
-                                self.log_recognition(f"❌ Akses ditolak: {employee['name']} - {access_result['reason']}")
-                                # Play denied beep
-                                denied_beep()
+                        raw_conf = employee.get('raw_confidence', 1000)
+                        if raw_conf <= threshold:
+                            # Debounce per-employee to keep UI smooth
+                            eid = employee['employee_id']
+                            now_ts = time.time()
+                            last_ts = self._last_recognition_trigger.get(eid, 0)
+                            if now_ts - last_ts >= self._recognition_cooldown_sec:
+                                self._last_recognition_trigger[eid] = now_ts
+                                # Dispatch processing to background so drawing stays smooth
+                                threading.Thread(
+                                    target=self._process_recognition_async,
+                                    args=(eid, employee['name'], employee['confidence']),
+                                    daemon=True
+                                ).start()
                     else:
                         # Unknown face
                         cv2.putText(frame, 
@@ -973,12 +959,29 @@ class FaceAttendanceApp:
         """Update camera display in GUI"""
         self.camera_frame.configure(image=img_tk, text="")
         self.camera_frame.image = img_tk  # Keep a reference
+
+    def _process_recognition_async(self, employee_id, employee_name, confidence):
+        """Handle access verification and attendance in background to keep camera smooth."""
+        try:
+            access_result = self.verify_room_access_and_attendance(employee_id, employee_name, confidence)
+            if access_result['success']:
+                # Log clearer message and open door
+                reason = access_result.get('reason', f"Akses diberikan: {employee_name}")
+                self.window.after(0, lambda: self.log_recognition(f"✅ {reason}"))
+                self.window.after(0, self.activate_door_relay)
+                self.window.after(0, self.refresh_attendance_data)
+            else:
+                reason = access_result.get('reason', 'Akses ditolak')
+                self.window.after(0, lambda: self.log_recognition(f"❌ Akses ditolak: {employee_name} - {reason}"))
+                denied_beep()
+        except Exception as e:
+            print(f"Async recognition error: {e}")
     
     def verify_room_access_and_attendance(self, employee_id, employee_name, confidence):
         """
         Dual function: Verify room access + mark attendance if not already marked
         1. Check room access (always allowed if user has scheduled classes)
-        2. Mark attendance once per session
+        2. Mark attendance once per class session (per-class, per-day)
         Returns: dict with success status and reason
         """
         try:
@@ -1014,14 +1017,26 @@ class FaceAttendanceApp:
                 }
             
             # User HAS room access - proceed with dual function
-            
-            # Try to mark attendance (only if not already marked)
-            attendance_success, attendance_message = self.face_system.mark_attendance(employee_id, confidence)
-            
-            # Get session info for logging
-            sessions = access_info.get('sessions', [])
-            session_id = sessions[0].get('session_id') if sessions else None
-            
+            # Determine class_id from access info (pick the first matching class for now)
+            classes = access_info.get('classes', [])
+            class_id = classes[0].get('class_id') if classes else None
+
+            # Prefer recording attendance via backend_api to ensure per-class linkage
+            attendance_success = False
+            attendance_message = 'Tidak dapat mencatat absensi'
+            session_id = None
+
+            if class_id:
+                record_result = backend_api.record_attendance(employee_id, class_id, confidence_score=confidence)
+                attendance_success = bool(record_result and record_result.get('success'))
+                attendance_message = record_result.get('message') if record_result else attendance_message
+                session_id = record_result.get('session_id') if record_result else None
+            else:
+                # Fallback (no class_id found): try legacy mark_attendance (not per-class)
+                legacy_success, legacy_msg = self.face_system.mark_attendance(employee_id, confidence)
+                attendance_success = legacy_success
+                attendance_message = legacy_msg
+
             if attendance_success:
                 # First time entry today - attendance marked + door access granted
                 backend_api.log_door_access(

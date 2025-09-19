@@ -222,7 +222,7 @@ const ClassAccessDetail = () => {
                 attendance.session_number,
                 `"${attendance.session_topic || '-'}"`,
                 `"${attendance.student_name}"`,
-                attendance.student_id,
+                (attendance.student_number || attendance.student_id),
                 attendance.status === 'present' ? 'Hadir' : attendance.status === 'late' ? 'Terlambat' : 'Tidak Hadir',
                 attendance.check_in_time ? formatTime(attendance.check_in_time) : '-',
                 attendance.attendance_method === 'face_recognition' ? 'Face Recognition' : 
@@ -740,7 +740,7 @@ const ClassAccessDetail = () => {
                                                             </span>
                                                         </div>
                                                         
-                                                        <p className="text-sm text-slate-600 font-semibold mb-1">{attendance.student_id}</p>
+                                                        <p className="text-sm text-slate-600 font-semibold mb-1">{attendance.student_number || attendance.student_id}</p>
                                                         <p className="text-xs text-slate-500 bg-slate-100 rounded-lg px-3 py-1 inline-block">
                                                             Sesi {attendance.session_number} - {attendance.session_topic}
                                                         </p>
