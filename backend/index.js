@@ -18,11 +18,12 @@ if ((process.env.TRUST_PROXY || 'true').toLowerCase() !== 'false') {
     app.set('trust proxy', 1);
 }
 
+// Determine allowed origin(s)
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || process.env.CORS_ORIGIN || "http://localhost:3001";
 app.use(
     cors({
         credentials: true,
-        // Use CLIENT_ORIGIN (preferred) then CORS_ORIGIN fallback; final fallback only for local dev
-        origin: process.env.CLIENT_ORIGIN || process.env.CORS_ORIGIN || "http://localhost:3001",
+        origin: CLIENT_ORIGIN,
     })
 );
 
@@ -53,12 +54,19 @@ app.use(
 
 // Session Configuration
 const isProd = process.env.NODE_ENV === 'production';
-// Allow enabling SameSite=None for cross-site scenarios via SESSION_SAMESITE=none or CROSS_SITE_COOKIES=true
-const crossSite = (process.env.CROSS_SITE_COOKIES || 'false').toLowerCase() === 'true';
+// Auto-detect cross-site if origin host differs from base URL host
+const FRONTEND_URL = CLIENT_ORIGIN;
+const BACKEND_URL = process.env.BASE_URL || `http://localhost:${process.env.APP_PORT || process.env.PORT || 5001}`;
+const frontendHost = (() => { try { return new URL(FRONTEND_URL).host; } catch { return ''; } })();
+const backendHost = (() => { try { return new URL(BACKEND_URL).host; } catch { return ''; } })();
+const inferredCrossSite = frontendHost && backendHost && frontendHost !== backendHost;
+const crossSite = inferredCrossSite || (process.env.CROSS_SITE_COOKIES || 'false').toLowerCase() === 'true';
 let sameSite = (process.env.SESSION_SAMESITE || (crossSite ? 'none' : 'lax')).toLowerCase();
-if (!['lax', 'strict', 'none'].includes(sameSite)) {
-    sameSite = 'lax';
-}
+if (!['lax', 'strict', 'none'].includes(sameSite)) sameSite = 'lax';
+const cookieSecure = isProd || sameSite === 'none'; // SameSite=None requires Secure
+const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
+
+console.log('Session cookie config:', { sameSite, cookieSecure, cookieDomain, FRONTEND_URL, BACKEND_URL });
 
 app.use(
     session({
@@ -67,9 +75,10 @@ app.use(
         saveUninitialized: true,
         store: store,
         cookie: {
-            secure: isProd, // requires HTTPS in production
+            secure: cookieSecure, // requires HTTPS if SameSite=None
             httpOnly: true,
             sameSite: sameSite,
+            domain: cookieDomain,
             maxAge: 24 * 60 * 60 * 1000, // 1 day
         },
     })
@@ -100,6 +109,12 @@ const initDatabase = async () => {
         });
 
         console.log('✅ Database synchronized successfully');
+
+        // Ensure session table exists and is up-to-date
+        if (typeof store.sync === 'function') {
+            await store.sync();
+            console.log('✅ Session store synchronized');
+        }
         return true;
     } catch (error) {
         console.error('❌ Database initialization error:', error.name, error.message);

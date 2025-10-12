@@ -66,14 +66,25 @@ export const login = async (req, res) => {
             created_at: user.created_at
         };
 
-        res.status(200).json({
-            success: true,
-            message: "Login berhasil",
-            data: {
-                user: userData,
-                role: user.role,
-                sessionId: req.sessionID
+        // Ensure session is saved before responding
+        req.session.save((saveErr) => {
+            if (saveErr) {
+                console.error('Session save error:', saveErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Gagal menyimpan sesi"
+                });
             }
+
+            res.status(200).json({
+                success: true,
+                message: "Login berhasil",
+                data: {
+                    user: userData,
+                    role: user.role,
+                    sessionId: req.sessionID
+                }
+            });
         });
 
     } catch (error) {
@@ -182,7 +193,10 @@ export const register = async (req, res) => {
  */
 export const getProfile = async (req, res) => {
     try {
-        if (!req.session.userId) {
+        // Normalize session keys (support both userId and user_id)
+        const sessionUserId = req.session?.user_id || req.session?.userId;
+
+        if (!sessionUserId) {
             return res.status(401).json({
                 success: false,
                 message: "Tidak ada sesi aktif"
@@ -190,7 +204,7 @@ export const getProfile = async (req, res) => {
         }
 
         const user = await Users.findOne({
-            where: { user_id: req.session.userId }
+            where: { user_id: sessionUserId }
         });
 
         if (!user) {
@@ -233,7 +247,8 @@ export const getProfile = async (req, res) => {
  */
 export const logout = async (req, res) => {
     try {
-        if (!req.session.userId) {
+        const sessionUserId = req.session?.user_id || req.session?.userId;
+        if (!sessionUserId) {
             return res.status(401).json({
                 success: false,
                 message: "Tidak ada sesi aktif"
@@ -250,7 +265,12 @@ export const logout = async (req, res) => {
                 });
             }
 
-            res.clearCookie('connect.sid');
+            // Clear cookie; include domain if provided in env
+            const cookieOptions = {};
+            if (process.env.COOKIE_DOMAIN) {
+                cookieOptions.domain = process.env.COOKIE_DOMAIN;
+            }
+            res.clearCookie('connect.sid', cookieOptions);
             res.status(200).json({
                 success: true,
                 message: "Logout berhasil"
