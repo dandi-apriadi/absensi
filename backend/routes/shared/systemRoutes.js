@@ -4,7 +4,8 @@ import {
     createSystemLog,
     getSystemSettings,
     updateSystemSetting,
-    getDoorAccessLogs
+    getDoorAccessLogs,
+    logDoorAccess
 } from '../../controllers/shared/systemController.js';
 
 const router = express.Router();
@@ -23,6 +24,7 @@ router.put('/settings/:category/:key', updateSystemSetting);
 
 // Door Access Logs
 router.get('/door-access-logs', getDoorAccessLogs);
+router.post('/door-access/log', logDoorAccess);
 
 // Room Access Permissions - REMOVED (Single room system)
 // All users access the main room based on their role and schedule

@@ -5,6 +5,7 @@ import pickle
 import json
 from datetime import datetime
 from simple_database import simple_db
+from backend_api import backend_api
 
 class SimpleFaceRecognition:
     def __init__(self):
@@ -65,10 +66,10 @@ class SimpleFaceRecognition:
         # Tables will be created manually or via migration
         # For now, just ensure they exist by attempting to query them
         try:
-            # Test if tables exist
-            simple_db.execute_query("SELECT 1 FROM face_training LIMIT 1")
-            print("Face recognition tables verified")
-        except:
+            # Prefer backend availability check by listing records (no strict requirement)
+            _ = os.environ.get('BACKEND_API_URL')
+            print("Face recognition will use backend API for metadata when available")
+        except Exception:
             print("Face recognition tables may need to be created manually")
             # You can uncomment these lines if you want to auto-create tables:
             # self.create_face_training_table()
@@ -224,22 +225,58 @@ class SimpleFaceRecognition:
             current_time = datetime.now()
             model_id = str(uuid.uuid4())
 
-            # Upsert to avoid duplicate key issues on unique employee_id
-            query = """
-            INSERT INTO face_training (
-                employee_id, model_id, training_images_count, model_path, status, created_at, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                model_id = VALUES(model_id),
-                training_images_count = VALUES(training_images_count),
-                model_path = VALUES(model_path),
-                status = VALUES(status),
-                updated_at = VALUES(updated_at)
-            """
-            params = (employee_id, model_id, len(faces), model_path, 'active', current_time, current_time)
-            print(f"Upserting model for employee {employee_id}")
-            
-            result = simple_db.execute_query(query, params)
+            # Upsert via backend API
+            print(f"Upserting model for employee {employee_id} via backend API")
+            result = False
+            try:
+                if backend_api and getattr(backend_api, 'session', None):
+                    url = f"{backend_api.base_url}/api/face-training"
+                    payload = {
+                        'employee_id': employee_id,
+                        'model_id': model_id,
+                        'training_images_count': len(faces),
+                        'model_path': model_path,
+                        'status': 'active'
+                    }
+                    resp = backend_api.session.post(url, json=payload, timeout=10)
+                    result = resp.status_code in (200, 201)
+                else:
+                    # If backend-only mode is active, do not fallback to DB
+                    if getattr(backend_api, 'backend_only', False):
+                        result = False
+                    else:
+                        # Fallback direct DB
+                        query = """
+                        INSERT INTO face_training (
+                            employee_id, model_id, training_images_count, model_path, status, created_at, updated_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            model_id = VALUES(model_id),
+                            training_images_count = VALUES(training_images_count),
+                            model_path = VALUES(model_path),
+                            status = VALUES(status),
+                            updated_at = VALUES(updated_at)
+                        """
+                        params = (employee_id, model_id, len(faces), model_path, 'active', current_time, current_time)
+                        result = simple_db.execute_query(query, params)
+            except Exception as e:
+                print(f"Backend upsert error, fallback DB: {e}")
+                if getattr(backend_api, 'backend_only', False):
+                    result = False
+                else:
+                    query = """
+                    INSERT INTO face_training (
+                        employee_id, model_id, training_images_count, model_path, status, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        model_id = VALUES(model_id),
+                        training_images_count = VALUES(training_images_count),
+                        model_path = VALUES(model_path),
+                        status = VALUES(status),
+                        updated_at = VALUES(updated_at)
+                    """
+                    params = (employee_id, model_id, len(faces), model_path, 'active', current_time, current_time)
+                    result = simple_db.execute_query(query, params)
             
             if result:
                 print(f"Face model trained successfully for employee {employee_id}")
@@ -264,6 +301,17 @@ class SimpleFaceRecognition:
     def check_existing_model(self, employee_id):
         """Check if a face model already exists for the employee"""
         try:
+            # Try backend first
+            if backend_api and getattr(backend_api, 'session', None):
+                url = f"{backend_api.base_url}/api/face-training/{employee_id}"
+                resp = backend_api.session.get(url, timeout=10)
+                if resp.status_code == 200:
+                    data = (resp.json() or {}).get('data')
+                    if data:
+                        return {'id': data.get('model_id'), 'model_path': data.get('model_path')}
+            # Fallback DB
+            if getattr(backend_api, 'backend_only', False):
+                return None
             query = "SELECT id, model_path FROM face_training WHERE employee_id = %s"
             result = simple_db.execute_query(query, (employee_id,))
             return result[0] if result else None
@@ -358,14 +406,31 @@ class SimpleFaceRecognition:
     def load_all_face_models(self):
         """Load all face models from database"""
         try:
-            query = """
-            SELECT ft.employee_id, ft.model_path, u.fullname 
-            FROM face_training ft
-            JOIN users u ON ft.employee_id = u.user_id
-            WHERE ft.status = 'active'
-            """
-            
-            results = simple_db.execute_query(query)
+            # Try backend first
+            results = None
+            if backend_api and getattr(backend_api, 'session', None):
+                url = f"{backend_api.base_url}/api/face-training?status=active"
+                resp = backend_api.session.get(url, timeout=10)
+                if resp.status_code == 200:
+                    data = (resp.json() or {}).get('data')
+                    # Normalize into a list of rows
+                    if isinstance(data, dict):
+                        results = [data]
+                    elif isinstance(data, list):
+                        results = data
+                    else:
+                        results = []
+            # Fallback DB
+            if results is None:
+                if getattr(backend_api, 'backend_only', False):
+                    return []
+                query = """
+                SELECT ft.employee_id, ft.model_path, u.fullname 
+                FROM face_training ft
+                JOIN users u ON ft.employee_id = u.user_id
+                WHERE ft.status = 'active'
+                """
+                results = simple_db.execute_query(query)
             
             if results:
                 self.known_faces = {}
@@ -414,10 +479,15 @@ class SimpleFaceRecognition:
                                 eid = filename[start:end]
                                 if eid not in self.known_faces:
                                     # Lookup fullname from users table
-                                    user_rows = simple_db.execute_query(
-                                        "SELECT fullname FROM users WHERE user_id = %s",
-                                        (eid,)
-                                    )
+                                    user_rows = None
+                                    if backend_api and getattr(backend_api, 'session', None):
+                                        # No specific endpoint; keep DB fallback here
+                                        pass
+                                    if user_rows is None:
+                                        user_rows = simple_db.execute_query(
+                                            "SELECT fullname FROM users WHERE user_id = %s",
+                                            (eid,)
+                                        )
                                     fullname = user_rows[0]['fullname'] if user_rows else eid
                                     recognizer = cv2.face.LBPHFaceRecognizer_create()
                                     recognizer.read(path)
@@ -502,52 +572,15 @@ class SimpleFaceRecognition:
     def mark_attendance(self, employee_id, confidence_score):
         """Mark attendance for recognized employee"""
         try:
-            # Check if already marked today
-            today = datetime.now().date()
-            check_query = """
-            SELECT id FROM student_attendances 
-            WHERE student_id = %s AND DATE(check_in_time) = %s
-            """
-            
-            existing = simple_db.execute_query(check_query, (employee_id, today))
-            
-            if existing:
-                return False, "Attendance already marked for today"
-                
-            # Get active session for today (we need session_id for student_attendances)
-            session_query = """
-            SELECT id as session_id FROM attendance_sessions 
-            WHERE DATE(start_time) = %s AND status = 'active'
-            ORDER BY start_time DESC
-            LIMIT 1
-            """
-            
-            session_result = simple_db.execute_query(session_query, (today,))
-            session_id = session_result[0]['session_id'] if session_result else 1  # Default to 1 if no active session
-                
-            # Mark new attendance
-            current_time = datetime.now()
-            
-            insert_query = """
-            INSERT INTO student_attendances (
-                session_id, student_id, status, check_in_time, 
-                attendance_method, confidence_score, created_at, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            
-            params = (
-                session_id, employee_id, 'present', current_time,
-                'face_recognition', confidence_score, current_time, current_time
-            )
-            
-            result = simple_db.execute_query(insert_query, params)
-            
-            if result:
-                # Log the attendance attempt
-                self.log_attendance_attempt(employee_id, confidence_score, 'success')
-                return True, "Attendance marked successfully"
-            else:
-                return False, "Failed to mark attendance"
+            # Prefer backend smart record so it binds to a class; here we can't pick class_id, so attempt and report
+            try:
+                rr = backend_api.record_attendance(employee_id, class_id=None, confidence_score=confidence_score)
+                if rr and rr.get('success'):
+                    return True, "Attendance marked successfully"
+                else:
+                    return False, rr.get('message') if rr else "Failed to mark attendance"
+            except Exception as e:
+                return False, f"Failed to mark attendance: {e}"
                 
         except Exception as e:
             print(f"Error marking attendance: {e}")
@@ -556,16 +589,8 @@ class SimpleFaceRecognition:
     def log_attendance_attempt(self, employee_id, confidence_score, status):
         """Log face recognition attempt"""
         try:
-            query = """
-            INSERT INTO face_recognition_logs (
-                user_id, confidence_score, recognition_status, timestamp, created_at, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s)
-            """
-            
-            current_time = datetime.now()
-            params = (employee_id, confidence_score, status, current_time, current_time, current_time)
-            simple_db.execute_query(query, params)
-            
+            # Prefer backend; fall back to DB logging via backend_api helper
+            backend_api.log_door_access(employee_id, access_type='face_recognition', access_status='granted' if status=='success' else 'denied', confidence_score=confidence_score, reason='recognition-log')
         except Exception as e:
             print(f"Error logging attendance attempt: {e}")
             
@@ -573,8 +598,24 @@ class SimpleFaceRecognition:
         """Delete face model for an employee"""
         try:
             # Deactivate in database
-            query = "UPDATE face_training SET status = 'inactive' WHERE employee_id = %s"
-            result = simple_db.execute_query(query, (employee_id,))
+            # Prefer backend API to update status
+            result = False
+            try:
+                if backend_api and getattr(backend_api, 'session', None):
+                    url = f"{backend_api.base_url}/api/face-training/{employee_id}/status"
+                    resp = backend_api.session.patch(url, json={'status': 'inactive'}, timeout=10)
+                    result = resp.status_code in (200, 204)
+                else:
+                    if getattr(backend_api, 'backend_only', False):
+                        raise RuntimeError('Backend-only mode active; cannot fallback to DB')
+                    query = "UPDATE face_training SET status = 'inactive' WHERE employee_id = %s"
+                    result = simple_db.execute_query(query, (employee_id,))
+            except Exception as e:
+                print(f"Backend status update error, fallback DB: {e}")
+                if getattr(backend_api, 'backend_only', False):
+                    return False
+                query = "UPDATE face_training SET status = 'inactive' WHERE employee_id = %s"
+                result = simple_db.execute_query(query, (employee_id,))
             
             if result:
                 # Remove from loaded models

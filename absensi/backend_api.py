@@ -14,10 +14,78 @@ load_dotenv()
 class BackendAPI:
     def __init__(self):
         self.base_url = os.getenv('BACKEND_API_URL', 'http://localhost:5000')
+        # Global switch to disable all DB fallbacks and require backend API only (default true)
+        self.backend_only = os.getenv('BACKEND_ONLY_API', 'true').lower() in ('1', 'true', 'yes')
         if REQUESTS_AVAILABLE:
             self.session = requests.Session()
         else:
             self.session = None
+        # Store logged-in user data after successful login
+        self.current_user = None
+
+    # =========================
+    # AUTH & USERS
+    # =========================
+    def login(self, email: str, password: str):
+        """Login to backend and persist session cookies for subsequent calls.
+        Returns dict with user data on success or None on failure.
+        """
+        if not REQUESTS_AVAILABLE or self.session is None:
+            print("[BACKEND API] Requests not available; cannot perform HTTP login")
+            return None
+        try:
+            url = f"{self.base_url}/api/auth/login"
+            payload = { 'email': email, 'password': password }
+            resp = self.session.post(url, json=payload, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json() or {}
+                if data.get('success') and data.get('data') and data['data'].get('user'):
+                    self.current_user = data['data']['user']
+                    print(f"[BACKEND API] Login success. Role: {self.current_user.get('role')}")
+                    return self.current_user
+                else:
+                    print(f"[BACKEND API] Login unexpected response: {data}")
+            else:
+                print(f"[BACKEND API] Login failed: {resp.status_code} {resp.text}")
+        except Exception as e:
+            print(f"[BACKEND API] Login error: {e}")
+        return None
+
+    def get_users(self, status: str | None = 'active', limit: int = 1000, page: int = 1):
+        """Fetch users list from backend admin endpoint.
+        Returns list of dicts with keys: user_id, fullname, role, email, status (if available)
+        """
+        if not REQUESTS_AVAILABLE or self.session is None:
+            print("[BACKEND API] Requests not available; cannot fetch users via HTTP")
+            return None
+        try:
+            # Use administrator API which supports pagination and filters
+            params = { 'limit': limit, 'page': page }
+            if status:
+                params['status'] = status
+            url = f"{self.base_url}/api/admin/users"
+            resp = self.session.get(url, params=params, timeout=10)
+            if resp.status_code == 200:
+                body = resp.json() or {}
+                data = body.get('data') or {}
+                users = data.get('users') or data.get('rows') or body.get('users') or []
+                # Normalize fields to expected names
+                normalized = []
+                for u in users:
+                    normalized.append({
+                        'user_id': u.get('user_id') or u.get('id'),
+                        'fullname': u.get('full_name') or u.get('fullname') or u.get('name'),
+                        'role': u.get('role'),
+                        'email': u.get('email'),
+                        'status': u.get('status')
+                    })
+                print(f"[BACKEND API] Loaded {len(normalized)} users from backend")
+                return normalized
+            else:
+                print(f"[BACKEND API] Get users failed: {resp.status_code} {resp.text}")
+        except Exception as e:
+            print(f"[BACKEND API] Get users error: {e}")
+        return None
         
     def check_user_room_access(self, user_id, date=None):
         """
@@ -26,8 +94,39 @@ class BackendAPI:
         """
         if date is None:
             date = datetime.now().strftime('%Y-%m-%d')
-        
-        # Use fallback database check immediately since backend requires auth
+        # Prefer backend endpoint when available
+        if REQUESTS_AVAILABLE and self.session is not None:
+            try:
+                url = f"{self.base_url}/api/attendance/check-access"
+                payload = { 'user_id': user_id, 'date': date }
+                resp = self.session.post(url, json=payload, timeout=10)
+                if resp.status_code == 200:
+                    body = resp.json() or {}
+                    data = body.get('data') or {}
+                    # Ensure shape similar to fallback for callers
+                    allowed = bool((data or {}).get('allowed'))
+                    classes = (data or {}).get('classes') or []
+                    sessions = [{
+                        'session_id': None,
+                        'class_id': c.get('class_id'),
+                        'start_time': c.get('start_time'),
+                        'end_time': c.get('end_time')
+                    } for c in classes]
+                    return {
+                        'allowed': allowed,
+                        'classes': classes,
+                        'sessions': sessions,
+                        'reason': (data or {}).get('reason')
+                    }
+                else:
+                    print(f"[BACKEND API] check-access HTTP error: {resp.status_code} {resp.text}")
+            except Exception as e:
+                print(f"[BACKEND API] check-access request error: {e}")
+
+        # Fallback to direct DB if backend unavailable
+        if self.backend_only:
+            print(f"[BACKEND API] Backend-only mode active; skipping DB fallback for check access of user {user_id}")
+            return None
         print(f"[BACKEND API] Using database fallback for user {user_id} on {date}")
         return self._check_access_fallback(user_id, date)
     
@@ -230,6 +329,41 @@ class BackendAPI:
         Record attendance for a user in a specific class
         Prevents duplicate attendance for same class on same day
         """
+        # Prefer backend endpoint first
+        if REQUESTS_AVAILABLE and self.session is not None:
+            try:
+                url = f"{self.base_url}/api/attendance/record/smart"
+                payload = {
+                    'user_id': user_id,
+                    'class_id': class_id,
+                    'confidence_score': confidence_score
+                }
+                resp = self.session.post(url, json=payload, timeout=10)
+                if resp.status_code == 200 or resp.status_code == 201:
+                    body = resp.json() or {}
+                    success = bool(body.get('success'))
+                    data = body.get('data') or {}
+                    msg = body.get('message') or (data.get('message') if isinstance(data, dict) else None)
+                    return {
+                        'success': success,
+                        'message': msg or ('Absensi berhasil dicatat' if success else 'Gagal mencatat absensi'),
+                        'session_id': data.get('session_id') if isinstance(data, dict) else None,
+                        'check_in_time': data.get('check_in_time') if isinstance(data, dict) else None,
+                        'confidence_score': confidence_score
+                    }
+                else:
+                    print(f"[BACKEND API] record/smart HTTP error: {resp.status_code} {resp.text}")
+            except Exception as e:
+                print(f"[BACKEND API] record/smart request error: {e}")
+
+        # Fallback to direct DB flow
+        if self.backend_only:
+            print("[BACKEND API] Backend-only mode active; skipping DB fallback for record_attendance")
+            return {
+                'success': False,
+                'message': 'Tidak dapat mencatat absensi (mode backend-only, backend tidak tersedia).',
+                'reason': 'backend_only_no_fallback'
+            }
         try:
             from simple_database import simple_db
             from datetime import datetime
@@ -470,13 +604,17 @@ class BackendAPI:
         """
         Log door access attempt to backend
         """
-        # If requests is not available, use fallback immediately
+        # If requests is not available, use fallback or skip if backend-only
         if not REQUESTS_AVAILABLE or self.session is None:
+            if self.backend_only:
+                print("[BACKEND API] Backend-only mode active; skipping DB fallback for door access log")
+                return False
             return self._log_access_fallback(user_id, access_type, access_status, 
                                            confidence_score, reason, session_id)
             
         try:
-            url = f"{self.base_url}/api/door-access/log"
+            # Use system route to log door access on backend
+            url = f"{self.base_url}/api/system/door-access/log"
             data = {
                 'user_id': user_id,
                 'access_type': access_type,
@@ -493,16 +631,42 @@ class BackendAPI:
                 print(f"[BACKEND API] Access logged successfully for user {user_id}")
                 return True
             else:
-                # If backend returns non-200 (e.g., 404), fall back to DB logging
-                print(f"[BACKEND API] Error logging access: {response.status_code}, falling back to DB log")
+                # If backend returns non-200 (e.g., 404), fall back to DB logging unless backend-only
+                print(f"[BACKEND API] Error logging access: {response.status_code}")
+                if self.backend_only:
+                    print("[BACKEND API] Backend-only mode active; skipping DB fallback for door access log")
+                    return False
+                print("[BACKEND API] Falling back to DB log")
                 return self._log_access_fallback(user_id, access_type, access_status, 
                                                confidence_score, reason, session_id)
                 
         except Exception as e:
             print(f"[BACKEND API] Request error logging access: {e}")
-            # Fallback to database logging
+            # Fallback to database logging unless backend-only
+            if self.backend_only:
+                print("[BACKEND API] Backend-only mode active; skipping DB fallback for door access log")
+                return False
             return self._log_access_fallback(user_id, access_type, access_status, 
                                            confidence_score, reason, session_id)
+
+    def get_today_attendances(self, date_str: str | None = None):
+        """Fetch today's attendance records via backend for display in UI."""
+        if not REQUESTS_AVAILABLE or self.session is None:
+            print("[BACKEND API] Requests not available; cannot fetch attendances via HTTP")
+            return None
+        try:
+            if not date_str:
+                date_str = datetime.now().strftime('%Y-%m-%d')
+            url = f"{self.base_url}/api/attendance/today"
+            resp = self.session.get(url, params={'date': date_str}, timeout=10)
+            if resp.status_code == 200:
+                body = resp.json() or {}
+                return body.get('data') or []
+            else:
+                print(f"[BACKEND API] get today attendances error: {resp.status_code} {resp.text}")
+        except Exception as e:
+            print(f"[BACKEND API] get today attendances exception: {e}")
+        return None
     
     def _log_access_fallback(self, user_id, access_type, access_status, 
                            confidence_score, reason, session_id):

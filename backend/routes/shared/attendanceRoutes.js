@@ -10,7 +10,9 @@ import {
     getAttendanceStatistics,
     updateAttendanceStatus,
     checkUserRoomAccess,
-    getClassAttendanceData
+    getClassAttendanceData,
+    recordAttendanceSmart,
+    getTodayAttendances
 } from '../../controllers/shared/attendanceController.js';
 
 const router = express.Router();
@@ -28,6 +30,8 @@ router.patch('/sessions/:id/end', endAttendanceSession);
 // Attendance Records
 router.post('/record', recordAttendance);
 router.post('/record/face', recordAttendanceByFace);
+// Smart record from edge device (face recognition): accepts user_id + class_id
+router.post('/record/smart', recordAttendanceSmart);
 router.get('/session/:session_id', getSessionAttendances);
 router.patch('/records/:id', updateAttendanceStatus);
 
@@ -39,5 +43,8 @@ router.get('/class/:classId/attendance-data', getClassAttendanceData);
 
 // Room Access Check (for face recognition system)
 router.post('/check-access', checkUserRoomAccess);
+
+// Today attendances (simple list for edge UI)
+router.get('/today', getTodayAttendances);
 
 export default router;

@@ -304,6 +304,42 @@ export const getDoorAccessLogs = async (req, res) => {
 };
 
 /**
+ * Log door access from edge device (face recognition system)
+ */
+export const logDoorAccess = async (req, res) => {
+    try {
+        const { user_id, access_type = 'face_recognition', access_status = 'granted', confidence_score, reason, session_id, accessed_at } = req.body;
+        const accessTime = accessed_at ? new Date(accessed_at) : new Date();
+
+        await DoorAccessLogs.create({
+            user_id,
+            access_type,
+            access_status,
+            confidence_score: confidence_score ?? null,
+            reason: reason ?? null,
+            session_id: session_id ?? null,
+            accessed_at: accessTime
+        });
+
+        // Also write to file logger
+        logger.doorAccess('edge_log', {
+            user_id,
+            access_type,
+            access_status,
+            confidence_score,
+            reason,
+            session_id,
+            access_time: accessTime.toISOString()
+        });
+
+        return res.status(200).json({ success: true, message: 'Door access logged' });
+    } catch (error) {
+        console.error('Log door access error:', error);
+        return res.status(500).json({ success: false, message: 'Gagal menyimpan log akses pintu' });
+    }
+};
+
+/**
  * Get room access permissions (Admin only)
  */
 export const getRoomAccessPermissions = async (req, res) => {

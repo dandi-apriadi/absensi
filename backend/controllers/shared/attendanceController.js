@@ -615,6 +615,134 @@ export const getAttendanceStatistics = async (req, res) => {
 };
 
 /**
+ * Record attendance from edge device (smart) using user_id and class_id
+ * Responsibilities:
+ * - Create session for today if not exists (scheduled/active window)
+ * - Prevent duplicate attendance per student per day per class
+ * - Log face recognition confidence to FaceRecognitionLogs
+ */
+export const recordAttendanceSmart = async (req, res) => {
+    try {
+        const { user_id, class_id, confidence_score } = req.body;
+        if (!user_id || !class_id) {
+            return res.status(400).json({ success: false, message: 'user_id dan class_id wajib diisi' });
+        }
+
+        // Verify user exists and is student (edge may send lecturer for access but attendance is for students)
+        const student = await Users.findOne({ where: { user_id } });
+        if (!student) {
+            return res.status(404).json({ success: false, message: 'User tidak ditemukan' });
+        }
+
+        const today = new Date();
+        const dateStr = today.toISOString().slice(0, 10);
+
+        // Find or create today's session for this class (align with model fields)
+        let session = await AttendanceSessions.findOne({
+            where: {
+                class_id: class_id,
+                session_date: dateStr
+            },
+            order: [['created_at', 'DESC']]
+        });
+
+        if (!session) {
+            // Create minimal session window (08:00-17:00 default) and compute session_number
+            const countForClass = await AttendanceSessions.count({ where: { class_id: class_id } });
+            const nextSessionNumber = countForClass + 1;
+
+            session = await AttendanceSessions.create({
+                class_id: class_id,
+                session_number: nextSessionNumber,
+                session_date: dateStr,
+                start_time: '08:00:00',
+                end_time: '17:00:00',
+                session_type: 'regular',
+                attendance_method: 'face_recognition',
+                status: 'ongoing'
+            });
+        } else if (session.status === 'scheduled') {
+            // Move scheduled session to ongoing; model doesn't have actual_start_time
+            await session.update({ status: 'ongoing', attendance_open_time: new Date() });
+        }
+
+        // Prevent duplicate attendance for same class and same day
+        const existing = await StudentAttendances.findOne({
+            where: {
+                session_id: session.id,
+                student_id: student.user_id
+            }
+        });
+        if (existing) {
+            return res.status(200).json({
+                success: false,
+                message: 'Sudah absen hari ini untuk kelas ini',
+                data: {
+                    session_id: session.id,
+                    check_in_time: existing.check_in_time
+                }
+            });
+        }
+
+        // Create face recognition log
+        await FaceRecognitionLogs.create({
+            session_id: session.id,
+            recognized_user_id: student.user_id,
+            confidence_score: confidence_score ?? 0.95,
+            recognition_status: 'success'
+        });
+
+        // Record attendance
+        const attendance = await StudentAttendances.create({
+            session_id: session.id,
+            student_id: student.user_id,
+            status: 'present',
+            check_in_time: new Date(),
+            attendance_method: 'face_recognition',
+            confidence_score: confidence_score ?? 0.95
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: 'Absensi berhasil dicatat',
+            data: {
+                session_id: session.id,
+                check_in_time: attendance.check_in_time,
+                attendance_id: attendance.id
+            }
+        });
+
+    } catch (error) {
+        console.error('Record attendance smart error:', error);
+        return res.status(500).json({ success: false, message: 'Gagal mencatat absensi' });
+    }
+};
+
+/**
+ * Get today's attendance simple list for UI (name, time, status)
+ */
+export const getTodayAttendances = async (req, res) => {
+    try {
+        const date = req.query.date || new Date().toISOString().slice(0, 10);
+        const [rows] = await db.query(`
+            SELECT u.fullname, sa.check_in_time, sa.status
+            FROM student_attendances sa
+            JOIN users u ON sa.student_id = u.user_id
+            WHERE DATE(sa.check_in_time) = :date
+            ORDER BY sa.check_in_time DESC
+        `, {
+            replacements: { date },
+            type: db.QueryTypes.SELECT
+        });
+
+        return res.status(200).json({ success: true, data: rows });
+    } catch (error) {
+        console.error('Get today attendances error:', error);
+        return res.status(500).json({ success: false, message: 'Gagal mengambil data absensi hari ini' });
+    }
+};
+
+/**
  * Update attendance status (Lecturer only)
  */
 export const updateAttendanceStatus = async (req, res) => {
@@ -707,7 +835,7 @@ export const checkUserRoomAccess = async (req, res) => {
         console.log(`Current time: ${currentTime}`);
         console.log(`Check date: ${checkDate}`);
         
-        const [classes] = await db.query(`
+        const classesResult = await db.query(`
             SELECT 
                 cc.id as class_id,
                 cc.class_name,
@@ -727,60 +855,105 @@ export const checkUserRoomAccess = async (req, res) => {
             type: db.QueryTypes.SELECT
         });
 
+        // Ensure we have an array of classes; sequelize QueryTypes.SELECT returns an array
+        const classes = Array.isArray(classesResult) ? classesResult : (classesResult ? [classesResult] : []);
+
         console.log(`Found ${classes.length} enrolled classes for user ${user_id}`);
         
+        // Helpers: normalize day and parse schedule safely
+        const normalizeDay = (val) => {
+            if (!val && val !== 0) return undefined;
+            const mapEN = { Monday:'Senin', Tuesday:'Selasa', Wednesday:'Rabu', Thursday:'Kamis', Friday:'Jumat', Saturday:'Sabtu', Sunday:'Minggu' };
+            const mapID = { Senin:'Senin', Selasa:'Selasa', Rabu:'Rabu', Kamis:'Kamis', Jumat:'Jumat', Sabtu:'Sabtu', Minggu:'Minggu' };
+            const mapNum1 = { '1':'Senin','2':'Selasa','3':'Rabu','4':'Kamis','5':'Jumat','6':'Sabtu','7':'Minggu' };
+            const mapNum0 = { '0':'Minggu','1':'Senin','2':'Selasa','3':'Rabu','4':'Kamis','5':'Jumat','6':'Sabtu' };
+            const s = String(val).trim();
+            // Title-case
+            const title = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+            if (mapID[title]) return mapID[title];
+            if (mapEN[title]) return mapEN[title];
+            if (mapNum1[s] !== undefined) return mapNum1[s];
+            if (mapNum0[s] !== undefined) return mapNum0[s];
+            return undefined;
+        };
+
+        const ensureArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+
+        const parseScheduleSlots = (raw) => {
+            try {
+                if (!raw && raw !== 0) return [];
+                let val = raw;
+                if (typeof val === 'string') {
+                    const trimmed = val.trim();
+                    // Attempt JSON parse; handle double-encoded JSON
+                    try {
+                        val = JSON.parse(trimmed);
+                        if (typeof val === 'string') {
+                            val = JSON.parse(val);
+                        }
+                    } catch (e) {
+                        console.warn('Schedule JSON parse failed; schedule treated as empty. Raw:', trimmed.slice(0, 80));
+                        return [];
+                    }
+                }
+                if (Array.isArray(val)) {
+                    return val.filter(x => typeof x === 'object' && x);
+                }
+                if (typeof val === 'object' && val) {
+                    // Single slot object
+                    return [val];
+                }
+                return [];
+            } catch (err) {
+                console.error('parseScheduleSlots error:', err);
+                return [];
+            }
+        };
+
         // Check if any class has schedule for current day and time
         let hasAccess = false;
         let accessInfo = [];
         
         for (const cls of classes) {
-            let schedule = [];
-            try {
-                if (cls.schedule && typeof cls.schedule === 'string') {
-                    schedule = JSON.parse(cls.schedule);
-                } else if (Array.isArray(cls.schedule)) {
-                    schedule = cls.schedule;
-                }
-            } catch (e) {
-                console.error('Error parsing schedule:', e);
-                continue;
-            }
-            
-            console.log(`Class ${cls.class_name} schedule:`, schedule);
-            
+            const scheduleSlots = parseScheduleSlots(cls.schedule);
+            console.log(`Class ${cls.class_name} schedule slots count:`, scheduleSlots.length);
+
             // Check if current day and time matches any schedule
-            for (const slot of schedule) {
+            for (const slot of scheduleSlots) {
+                if (!slot || typeof slot !== 'object') {
+                    // Skip invalid slot (e.g., primitives from malformed input)
+                    continue;
+                }
+                const slotDayNorm = normalizeDay(slot.day);
+                const dayMatch = slotDayNorm === currentDayIndonesian;
                 console.log(`Checking slot:`, slot);
-                
-                // Improved day matching
-                const dayMatch = slot.day === currentDayIndonesian || slot.day === currentDay;
-                
-                console.log(`Day match: ${slot.day} === ${currentDayIndonesian} || ${slot.day} === ${currentDay} = ${dayMatch}`);
-                
-                if (dayMatch) {
-                    const startTime = slot.start_time;
-                    const endTime = slot.end_time;
-                    
-                    console.log(`Checking time: ${currentTime} between ${startTime} - ${endTime}`);
-                    
-                    // Check if current time is within the schedule
-                    if (currentTime >= startTime && currentTime <= endTime) {
-                        console.log(`✅ ACCESS GRANTED! Time ${currentTime} is within ${startTime}-${endTime}`);
-                        hasAccess = true;
-                        accessInfo.push({
-                            class_id: cls.class_id,
-                            class_name: cls.class_name,
-                            course_name: cls.course_name,
-                            course_code: cls.course_code,
-                            schedule_day: slot.day,
-                            start_time: startTime,
-                            end_time: endTime
-                        });
-                    } else {
-                        console.log(`❌ Time ${currentTime} is NOT within ${startTime}-${endTime}`);
-                    }
+                console.log(`Day match: ${slotDayNorm} === ${currentDayIndonesian} = ${dayMatch}`);
+
+                if (!dayMatch) continue;
+
+                // Support alternative keys
+                const startTime = slot.start_time || slot.start || slot.startAt || slot.start_at;
+                const endTime = slot.end_time || slot.end || slot.endAt || slot.end_at;
+                if (!startTime || !endTime) {
+                    console.warn('Skipping slot with missing time range:', slot);
+                    continue;
+                }
+
+                console.log(`Checking time: ${currentTime} between ${startTime} - ${endTime}`);
+                if (currentTime >= String(startTime).slice(0,5) && currentTime <= String(endTime).slice(0,5)) {
+                    console.log(`✅ ACCESS GRANTED! Time ${currentTime} is within ${startTime}-${endTime}`);
+                    hasAccess = true;
+                    accessInfo.push({
+                        class_id: cls.class_id,
+                        class_name: cls.class_name,
+                        course_name: cls.course_name,
+                        course_code: cls.course_code,
+                        schedule_day: slotDayNorm,
+                        start_time: String(startTime).slice(0,5),
+                        end_time: String(endTime).slice(0,5)
+                    });
                 } else {
-                    console.log(`❌ Day doesn't match: ${slot.day} !== ${currentDayIndonesian}`);
+                    console.log(`❌ Time ${currentTime} is NOT within ${startTime}-${endTime}`);
                 }
             }
         }

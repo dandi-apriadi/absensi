@@ -100,9 +100,33 @@ class LoginWindow:
             messagebox.showerror("Error", "Mohon isi email dan password")
             return
             
-        print("[LOGIN DEBUG] Calling verify_login...")
-        # Verify credentials
-        if self.verify_login(email, password):
+        print("[LOGIN DEBUG] Calling backend login...")
+        # Prefer backend HTTP login; optional DB fallback controlled by env (default true)
+        backend_only_auth = os.getenv('BACKEND_ONLY_AUTH', 'true').lower() in ('1','true','yes')
+        logged_in = False
+        user_payload = None
+        try:
+            user_payload = backend_api.login(email, password)
+            if user_payload:
+                # Normalize to current_user shape
+                self.current_user = {
+                    'user_id': user_payload.get('user_id'),
+                    'fullname': user_payload.get('fullname') or user_payload.get('full_name'),
+                    'role': user_payload.get('role'),
+                    'status': 'active'
+                }
+                logged_in = True
+        except Exception as e:
+            print(f"[LOGIN DEBUG] Backend login error: {e}")
+
+        if not logged_in and not backend_only_auth:
+            print("[LOGIN DEBUG] Falling back to local DB login verification (BACKEND_ONLY_AUTH is false)...")
+            logged_in = self.verify_login(email, password)
+        elif not logged_in and backend_only_auth:
+            print("[LOGIN DEBUG] Skipping DB fallback (BACKEND_ONLY_AUTH is true)")
+
+        # Open main app on success
+        if logged_in:
             print("[LOGIN DEBUG] Login successful, opening main app...")
             self.window.destroy()
             # Open main application
@@ -203,8 +227,26 @@ class FaceAttendanceApp:
         # Track last recognition trigger time per user to avoid spamming
         self._last_recognition_trigger = {}
         self._recognition_cooldown_sec = 3.0
+        # Periodic backend health check when camera is running
+        self._next_backend_ping_at = 0.0
         
         self.setup_ui()
+    
+    def is_backend_available(self, timeout: int = 3) -> bool:
+        """Lightweight check to ensure backend API is reachable.
+        In backend-only mode, camera/attendance must not run when backend is down.
+        """
+        try:
+            # Require a configured backend client
+            if not getattr(backend_api, 'session', None) or not getattr(backend_api, 'base_url', None):
+                return False
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            url = f"{backend_api.base_url}/api/attendance/today?date={today_str}"
+            resp = backend_api.session.get(url, timeout=timeout)
+            # Any non-5xx response indicates the server is up (even if endpoint returns 4xx)
+            return resp is not None and getattr(resp, 'status_code', 503) < 500
+        except Exception:
+            return False
         
     def get_current_employee_info(self):
         """Get employee info for the currently logged in user"""
@@ -513,14 +555,14 @@ class FaceAttendanceApp:
     def load_users_list(self):
         """Load list of users for admin interface"""
         try:
-            query = """
-            SELECT user_id, fullname, role, email, status
-            FROM users 
-            WHERE status = 'active'
-            ORDER BY fullname
-            """
-            
-            results = simple_db.execute_query(query)
+            # Require backend availability and use backend API only
+            if not self.is_backend_available():
+                self.log_message("⚠️ Backend tidak tersedia. Tidak dapat memuat daftar user.")
+                return
+            results = backend_api.get_users(status='active')
+            if results is None:
+                self.log_message("⚠️ Gagal memuat daftar user dari backend.")
+                return
             
             if results:
                 user_options = []
@@ -568,40 +610,67 @@ class FaceAttendanceApp:
         if not hasattr(self, 'selected_user_data'):
             self.log_message("No user selected")
             return
-        
-        user = self.selected_user_data
-        user_id = user['user_id']
-        
-        self.log_message(f"Checking room access for {user['fullname']}...")
-        
-        try:
-            # Check access via backend API
-            access_info = backend_api.check_user_room_access(user_id)
-            
-            if access_info:
-                if access_info.get('allowed', False):
-                    self.log_message(f"✅ {user['fullname']} DIIZINKAN masuk ruangan")
-                    self.log_message(f"Alasan: {access_info.get('reason', 'N/A')}")
-                    
-                    sessions = access_info.get('sessions', [])
+
+        if not self.is_backend_available():
+            self.log_message("⚠️ Backend tidak tersedia. Tidak dapat memeriksa akses ruangan.")
+            try:
+                messagebox.showerror("Backend Tidak Tersedia", "Server backend tidak aktif. Tidak dapat memeriksa akses ruangan.")
+            except Exception:
+                pass
+            return
+
+        # Run in background to keep UI responsive
+        user = dict(self.selected_user_data)  # copy to avoid mutation while running
+
+        def _check_access_room_thread(u):
+            try:
+                uid = u.get('user_id')
+                uname = u.get('fullname', f"User {uid}")
+                self.log_message(f"Checking room access for {uname}...")
+
+                access_info = backend_api.check_user_room_access(uid)
+
+                if not access_info:
+                    self.log_message(f"⚠️ Tidak dapat memverifikasi akses untuk {uname}")
+                    self.window.after(0, lambda: messagebox.showwarning("Gagal Memeriksa", f"Tidak dapat memverifikasi akses untuk {uname}."))
+                    return
+
+                allowed = bool(access_info.get('allowed', False))
+                reason = access_info.get('reason') or 'N/A'
+
+                # Normalize potential response keys: 'classes' or 'sessions'
+                sessions = access_info.get('classes') or access_info.get('sessions') or []
+
+                if allowed:
+                    self.log_message(f"✅ {uname} DIIZINKAN masuk ruangan")
+                    self.log_message(f"Alasan: {reason}")
                     if sessions:
-                        self.log_message(f"Jadwal hari ini:")
-                        for session in sessions:
-                            self.log_message(f"  - {session.get('course_name', 'N/A')} "
-                                           f"({session.get('start_time', 'N/A')}-{session.get('end_time', 'N/A')})")
+                        self.log_message("Jadwal hari ini:")
+                        for s in sessions:
+                            course = s.get('course_name') or s.get('name') or s.get('course') or 'N/A'
+                            start = s.get('start_time') or s.get('start') or s.get('start_at') or 'N/A'
+                            end = s.get('end_time') or s.get('end') or s.get('end_at') or 'N/A'
+                            room = s.get('room_name') or s.get('room')
+                            extra = f" di {room}" if room else ""
+                            self.log_message(f"  - {course} ({start}-{end}){extra}")
+                    self.window.after(0, lambda: messagebox.showinfo("Akses Diizinkan", f"{uname} diizinkan masuk.\nAlasan: {reason}"))
                 else:
-                    self.log_message(f"❌ {user['fullname']} TIDAK DIIZINKAN masuk ruangan")
-                    self.log_message(f"Alasan: {access_info.get('reason', 'N/A')}")
-            else:
-                self.log_message(f"⚠️ Tidak dapat memverifikasi akses untuk {user['fullname']}")
-                
-        except Exception as e:
-            self.log_message(f"Error checking room access: {e}")
+                    self.log_message(f"❌ {uname} TIDAK DIIZINKAN masuk ruangan")
+                    self.log_message(f"Alasan: {reason}")
+                    self.window.after(0, lambda: messagebox.showerror("Akses Ditolak", f"{uname} tidak diizinkan masuk.\nAlasan: {reason}"))
+
+            except Exception as e:
+                self.log_message(f"Error checking room access: {e}")
+
+        threading.Thread(target=_check_access_room_thread, args=(user,), daemon=True).start()
     
     def admin_capture_dataset(self):
         """Admin capture dataset for selected user"""
         if not hasattr(self, 'selected_user_data'):
             self.log_message("No user selected")
+            return
+        if not self.is_backend_available():
+            self.log_message("⚠️ Backend tidak tersedia. Tidak dapat melakukan capture dataset.")
             return
         
         user = self.selected_user_data
@@ -620,6 +689,9 @@ class FaceAttendanceApp:
         if not hasattr(self, 'selected_user_data'):
             self.log_message("No user selected")
             return
+        if not self.is_backend_available():
+            self.log_message("⚠️ Backend tidak tersedia. Tidak dapat melakukan training model.")
+            return
         
         user = self.selected_user_data
         self.log_message(f"Starting model training for {user['fullname']}...")
@@ -637,6 +709,9 @@ class FaceAttendanceApp:
         if not hasattr(self, 'selected_user_data'):
             self.log_message("No user selected")
             return
+        if not self.is_backend_available():
+            self.log_message("⚠️ Backend tidak tersedia. Tidak dapat menghapus model.")
+            return
         
         user = self.selected_user_data
         
@@ -648,8 +723,18 @@ class FaceAttendanceApp:
         
         if result:
             self.log_message(f"Deleting model for {user['fullname']}...")
-            # Implementation for deleting model
-            # TODO: Add delete model functionality
+            try:
+                success = self.face_system.delete_employee_model(user['user_id'])
+                if success:
+                    self.log_message(f"Model untuk {user['fullname']} berhasil dihapus")
+                    self.window.after(0, lambda: messagebox.showinfo("Sukses", f"Model {user['fullname']} berhasil dihapus"))
+                    self.window.after(0, self.refresh_models_list)
+                else:
+                    self.log_message("Gagal menghapus model via backend")
+                    self.window.after(0, lambda: messagebox.showerror("Error", "Gagal menghapus model"))
+            except Exception as e:
+                self.log_message(f"Error deleting model: {e}")
+                self.window.after(0, lambda: messagebox.showerror("Error", f"Gagal menghapus model: {e}"))
     
     def admin_cleanup_datasets(self):
         """Admin cleanup all dataset folders to free up storage"""
@@ -821,19 +906,18 @@ class FaceAttendanceApp:
     def get_employee_list(self):
         """Get list of employees for dropdown"""
         try:
-            query = """
-            SELECT u.user_id, u.fullname 
-            FROM users u
-            WHERE u.status = 'active' AND u.role IN ('student', 'lecturer')
-            ORDER BY u.fullname
-            """
-            
-            results = simple_db.execute_query(query)
+            # Require backend availability; backend API only
+            if not self.is_backend_available():
+                return []
+            results = backend_api.get_users(status='active')
+            if results is None:
+                return []
             
             if results:
-                return [f"{row['user_id']} - {row['fullname']}" for row in results]
-            else:
-                return []
+                allowed_roles = {'student','lecturer'}
+                filtered = [u for u in results if (u.get('role') in allowed_roles)]
+                return [f"{u.get('user_id')} - {u.get('fullname')}" for u in filtered]
+            return []
                 
         except Exception as e:
             print(f"Error getting employee list: {e}")
@@ -842,6 +926,11 @@ class FaceAttendanceApp:
     def start_camera(self):
         """Start camera for face recognition"""
         try:
+            # Strictly require backend to be available to start camera mode
+            if not self.is_backend_available():
+                messagebox.showerror("Backend Tidak Tersedia", "Server backend tidak aktif. Tidak dapat memulai mode Absensi.")
+                return
+
             self.camera = cv2.VideoCapture(0)
             if not self.camera.isOpened():
                 messagebox.showerror("Error", "Tidak dapat mengakses kamera")
@@ -852,7 +941,12 @@ class FaceAttendanceApp:
             self.stop_camera_btn.configure(state="normal")
             
             # Load face models
-            self.face_system.load_all_face_models()
+            models_loaded = self.face_system.load_all_face_models()
+            if not models_loaded:
+                # Fail fast if we cannot load models from backend
+                self.stop_camera()
+                messagebox.showerror("Error", "Gagal memuat model dari backend. Pastikan server backend berjalan.")
+                return
             
             # Start camera thread
             self.camera_thread = threading.Thread(target=self.camera_loop)
@@ -892,6 +986,14 @@ class FaceAttendanceApp:
         """Main camera loop for face recognition"""
         while self.camera_running:
             try:
+                # Periodically ensure backend is available; stop if down
+                now = time.time()
+                if now >= self._next_backend_ping_at:
+                    self._next_backend_ping_at = now + 5.0  # check every 5s
+                    if not self.is_backend_available(timeout=2):
+                        self.window.after(0, lambda: self.log_recognition("⚠️ Backend down terdeteksi. Menghentikan kamera."))
+                        self.window.after(0, self.stop_camera)
+                        break
                 ret, frame = self.camera.read()
                 if not ret:
                     break
@@ -973,7 +1075,9 @@ class FaceAttendanceApp:
             else:
                 reason = access_result.get('reason', 'Akses ditolak')
                 self.window.after(0, lambda: self.log_recognition(f"❌ Akses ditolak: {employee_name} - {reason}"))
-                denied_beep()
+                # Avoid repeated negative beeps if backend is down
+                if not access_result.get('backend_down', False):
+                    denied_beep()
         except Exception as e:
             print(f"Async recognition error: {e}")
     
@@ -989,17 +1093,16 @@ class FaceAttendanceApp:
             access_info = backend_api.check_user_room_access(employee_id)
             
             if not access_info:
-                # Log denied access attempt
-                backend_api.log_door_access(
-                    employee_id, 
-                    access_type='face_recognition',
-                    access_status='denied',
-                    confidence_score=confidence,
-                    reason='Cannot verify room access - backend unavailable'
-                )
+                # Backend likely unavailable; stop camera and abort flow
+                try:
+                    self.window.after(0, lambda: self.log_recognition("⚠️ Backend tidak tersedia. Menghentikan kamera."))
+                    self.window.after(0, self.stop_camera)
+                except Exception:
+                    pass
                 return {
                     'success': False,
-                    'reason': 'Tidak dapat memverifikasi akses ruangan'
+                    'reason': 'Backend tidak tersedia',
+                    'backend_down': True
                 }
             
             if not access_info.get('allowed', False):
@@ -1032,10 +1135,12 @@ class FaceAttendanceApp:
                 attendance_message = record_result.get('message') if record_result else attendance_message
                 session_id = record_result.get('session_id') if record_result else None
             else:
-                # Fallback (no class_id found): try legacy mark_attendance (not per-class)
-                legacy_success, legacy_msg = self.face_system.mark_attendance(employee_id, confidence)
-                attendance_success = legacy_success
-                attendance_message = legacy_msg
+                # Do not fallback to legacy attendance when backend is the source of truth
+                return {
+                    'success': False,
+                    'reason': 'Jadwal kelas tidak ditemukan untuk hari ini',
+                    'backend_down': False
+                }
 
             if attendance_success:
                 # First time entry today - attendance marked + door access granted
@@ -1117,6 +1222,9 @@ class FaceAttendanceApp:
         if not self.current_employee_id:
             messagebox.showerror("Error", "Akun Anda belum terdaftar sebagai karyawan. Hubungi administrator.")
             return
+        if not self.is_backend_available():
+            messagebox.showerror("Backend Tidak Tersedia", "Server backend tidak aktif. Tidak dapat capture dataset.")
+            return
             
         def capture_thread():
             self.log_process(f"Memulai capture dataset untuk {self.current_employee_name}...")
@@ -1151,6 +1259,9 @@ class FaceAttendanceApp:
         """Train model for current logged in user"""
         if not self.current_employee_id:
             messagebox.showerror("Error", "Akun Anda belum terdaftar sebagai karyawan. Hubungi administrator.")
+            return
+        if not self.is_backend_available():
+            messagebox.showerror("Backend Tidak Tersedia", "Server backend tidak aktif. Tidak dapat training model.")
             return
         
         # Check if dataset exists (use same base path as face system)
@@ -1193,6 +1304,9 @@ class FaceAttendanceApp:
         if not self.current_employee_id:
             messagebox.showerror("Error", "Akun Anda belum terdaftar sebagai karyawan. Hubungi administrator.")
             return
+        if not self.is_backend_available():
+            messagebox.showerror("Backend Tidak Tersedia", "Server backend tidak aktif. Tidak dapat menghapus model.")
+            return
         
         if messagebox.askyesno("Konfirmasi", f"Hapus model untuk {self.current_employee_name}?"):
             success = self.face_system.delete_employee_model(self.current_employee_id)
@@ -1220,25 +1334,42 @@ class FaceAttendanceApp:
             for item in self.attendance_tree.get_children():
                 self.attendance_tree.delete(item)
                 
-            # Get today's attendance
-            today = datetime.now().date()
-            query = """
-            SELECT u.fullname, sa.check_in_time, sa.status
-            FROM student_attendances sa
-            JOIN users u ON sa.student_id = u.user_id
-            WHERE DATE(sa.check_in_time) = %s
-            ORDER BY sa.check_in_time DESC
-            """
-            
-            results = simple_db.execute_query(query, (today,))
+            # Try backend endpoint first
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            results = backend_api.get_today_attendances(today_str)
+            if results is None:
+                if getattr(backend_api, 'backend_only', False):
+                    self.log_recognition("⚠️ Backend-only mode: gagal memuat data dari backend. Tidak ada fallback DB.")
+                    return
+                # Fallback direct DB
+                today = datetime.now().date()
+                query = """
+                SELECT u.fullname, sa.check_in_time, sa.status
+                FROM student_attendances sa
+                JOIN users u ON sa.student_id = u.user_id
+                WHERE DATE(sa.check_in_time) = %s
+                ORDER BY sa.check_in_time DESC
+                """
+                results = simple_db.execute_query(query, (today,))
             
             if results:
                 for row in results:
-                    clock_in = row['check_in_time'].strftime("%H:%M") if row['check_in_time'] else "-"
+                    # Normalize from backend shape or DB shape
+                    name = row.get('fullname') or row.get('full_name') or row.get('student_name')
+                    check_in = row.get('check_in_time')
+                    status = row.get('status')
+                    if hasattr(check_in, 'strftime'):
+                        clock_in = check_in.strftime("%H:%M")
+                    else:
+                        # assume string like ISO
+                        try:
+                            clock_in = check_in[11:16] if isinstance(check_in, str) else "-"
+                        except:
+                            clock_in = "-"
                     self.attendance_tree.insert("", "end", values=(
-                        row['fullname'],
+                        name or '-',
                         clock_in,
-                        row['status']
+                        status or '-'
                     ))
                     
         except Exception as e:
@@ -1265,24 +1396,40 @@ class FaceAttendanceApp:
             for item in self.models_tree.get_children():
                 self.models_tree.delete(item)
                 
-            query = """
-            SELECT ft.employee_id, u.fullname, ft.created_at, ft.status
-            FROM face_training ft
-            JOIN users u ON ft.employee_id = u.user_id
-            WHERE ft.status = 'active'
-            ORDER BY ft.created_at DESC
-            """
-            
-            results = simple_db.execute_query(query)
+            # Backend endpoint for models list only
+            if not self.is_backend_available():
+                self.log_message("⚠️ Backend tidak tersedia. Tidak dapat memuat daftar model.")
+                return
+            results = None
+            try:
+                if backend_api and getattr(backend_api, 'session', None):
+                    url = f"{backend_api.base_url}/api/face-training?status=active"
+                    resp = backend_api.session.get(url, timeout=10)
+                    if resp.status_code == 200:
+                        body = resp.json() or {}
+                        results = body.get('data')
+            except Exception as e:
+                print(f"Backend models list error: {e}")
+            if results is None:
+                self.log_message("⚠️ Gagal memuat daftar model dari backend.")
+                return
             
             if results:
                 for row in results:
-                    status = "Aktif" if row['status'] == 'active' else "Tidak Aktif"
-                    created_date = row['created_at'].strftime('%Y-%m-%d %H:%M') if row['created_at'] else 'N/A'
+                    # Normalize fields across backend or DB results
+                    employee_id = row.get('employee_id') or row.get('user_id')
+                    fullname = row.get('fullname') or row.get('full_name') or row.get('name')
+                    status_raw = row.get('status')
+                    created_at = row.get('created_at')
+                    status = "Aktif" if status_raw == 'active' else "Tidak Aktif"
+                    if hasattr(created_at, 'strftime'):
+                        created_date = created_at.strftime('%Y-%m-%d %H:%M')
+                    else:
+                        created_date = str(created_at)[:16] if created_at else 'N/A'
                     
                     self.models_tree.insert("", "end", values=(
-                        row['employee_id'],
-                        row['fullname'],
+                        employee_id,
+                        fullname,
                         created_date,
                         status
                     ))

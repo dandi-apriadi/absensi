@@ -10,6 +10,7 @@ import ReportRoute from './shared/reportRoutes.js';
 import DashboardRoute from './shared/dashboardRoutes.js';
 import RoomAccessRoute from './shared/roomAccessRoutes.js';
 import DemoRoute from './shared/demoRoutes.js';
+import FaceTrainingRoute from './shared/faceTrainingRoutes.js';
 
 const router = express.Router();
 
@@ -26,6 +27,7 @@ router.use('/api/attendance', AttendanceRoute);
 router.use('/api/courses', CourseRoute);
 router.use('/api/reports', ReportRoute);
 router.use('/api/room-access', RoomAccessRoute);
+router.use('/api/face-training', FaceTrainingRoute);
 
 // Demo routes (no authentication required)
 router.use('/api', DemoRoute);
