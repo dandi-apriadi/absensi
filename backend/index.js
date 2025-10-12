@@ -12,6 +12,12 @@ dotenv.config();
 // Pastikan app dideklarasikan sebelum dipakai
 const app = express();
 
+// When behind a reverse proxy (Nginx, Cloudflare), trust the proxy so secure cookies work in production
+// You can disable by setting TRUST_PROXY=false in env
+if ((process.env.TRUST_PROXY || 'true').toLowerCase() !== 'false') {
+    app.set('trust proxy', 1);
+}
+
 app.use(
     cors({
         credentials: true,
@@ -46,6 +52,14 @@ app.use(
 );
 
 // Session Configuration
+const isProd = process.env.NODE_ENV === 'production';
+// Allow enabling SameSite=None for cross-site scenarios via SESSION_SAMESITE=none or CROSS_SITE_COOKIES=true
+const crossSite = (process.env.CROSS_SITE_COOKIES || 'false').toLowerCase() === 'true';
+let sameSite = (process.env.SESSION_SAMESITE || (crossSite ? 'none' : 'lax')).toLowerCase();
+if (!['lax', 'strict', 'none'].includes(sameSite)) {
+    sameSite = 'lax';
+}
+
 app.use(
     session({
         secret: process.env.SESS_SECRET || "default_secret_key",
@@ -53,8 +67,9 @@ app.use(
         saveUninitialized: true,
         store: store,
         cookie: {
-            secure: process.env.NODE_ENV === "production",
+            secure: isProd, // requires HTTPS in production
             httpOnly: true,
+            sameSite: sameSite,
             maxAge: 24 * 60 * 60 * 1000, // 1 day
         },
     })

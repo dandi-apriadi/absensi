@@ -13,13 +13,34 @@ load_dotenv()
 
 class BackendAPI:
     def __init__(self):
-        self.base_url = os.getenv('BACKEND_API_URL', 'http://localhost:5000')
+        # Expected to be the server origin, e.g. https://yourdomain.com (WITHOUT trailing /api)
+        raw_base = os.getenv('BACKEND_API_URL', 'http://localhost:5000')
+        # Normalize: strip trailing slashes and a trailing '/api' if provided by mistake
+        base = (raw_base or '').strip()
+        # Remove trailing slash
+        while base.endswith('/') and base != 'http://localhost' and base != 'https://localhost':
+            base = base[:-1]
+        # Remove exactly one trailing '/api' (and optional trailing slash again)
+        if base.lower().endswith('/api'):
+            base = base[:-4]
+            if base.endswith('/'):
+                base = base[:-1]
+        self.base_url = base
         # Global switch to disable all DB fallbacks and require backend API only (default true)
         self.backend_only = os.getenv('BACKEND_ONLY_API', 'true').lower() in ('1', 'true', 'yes')
         if REQUESTS_AVAILABLE:
             self.session = requests.Session()
         else:
             self.session = None
+        # SSL verification (set to 'false' to allow self-signed certs during staging)
+        verify_env = os.getenv('BACKEND_API_VERIFY_SSL', 'true').lower()
+        self.verify_ssl = verify_env in ('1', 'true', 'yes', 'on')
+        if self.session is not None:
+            try:
+                # requests supports setting default verification on the session
+                self.session.verify = self.verify_ssl
+            except Exception:
+                pass
         # Store logged-in user data after successful login
         self.current_user = None
 

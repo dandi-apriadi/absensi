@@ -32,6 +32,11 @@ router.use('/api/face-training', FaceTrainingRoute);
 // Demo routes (no authentication required)
 router.use('/api', DemoRoute);
 
+// Lightweight health check (no auth)
+router.get('/api/health', (req, res) => {
+	res.status(200).json({ success: true, message: 'OK' });
+});
+
 // Test auth route (debugging session data)
 router.get('/api/test-auth', (req, res) => {
 	res.json({

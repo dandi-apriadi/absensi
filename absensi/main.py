@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+import glob
 import customtkinter as ctk
 from PIL import Image, ImageTk
 import cv2
@@ -231,6 +232,53 @@ class FaceAttendanceApp:
         self._next_backend_ping_at = 0.0
         
         self.setup_ui()
+
+    def _get_dataset_info(self, user_id):
+        """Return tuple (exists: bool, count: int) reflecting dataset readiness.
+        exists is True if either dataset images exist OR a trained model file exists.
+        count is the number of local dataset images found (jpg/jpeg/png).
+        """
+        try:
+            ds_base = getattr(self.face_system, 'dataset_path', 'datasets')
+            models_base = getattr(self.face_system, 'models_path', 'models')
+            dataset_dir = os.path.join(ds_base, f"employee_{user_id}")
+
+            # Try to resolve dataset dir via face_system helper to avoid CWD issues
+            resolved_dataset_dir = dataset_dir
+            try:
+                if hasattr(self.face_system, '_resolve_path'):
+                    resolved_dataset_dir = self.face_system._resolve_path(dataset_dir)
+            except Exception:
+                pass
+
+            # Count jpg/jpeg/png files in dataset folder (if present)
+            count = 0
+            if os.path.exists(resolved_dataset_dir):
+                for ext in ("*.jpg", "*.jpeg", "*.png"):
+                    count += len(glob.glob(os.path.join(resolved_dataset_dir, ext)))
+
+            # Consider trained model existence as readiness, even if dataset images were cleaned up
+            model_rel = os.path.join(models_base, f"employee_{user_id}_model.yml")
+            model_file = model_rel
+            try:
+                if hasattr(self.face_system, '_resolve_path'):
+                    model_file = self.face_system._resolve_path(model_rel)
+            except Exception:
+                pass
+            has_model = os.path.exists(model_file)
+
+            exists = (count > 0) or has_model
+            return exists, count
+        except Exception:
+            return False, 0
+
+    def _format_dataset_indicator(self, exists, count):
+        """Create a clear indicator string and color: 'Ada dataset' or 'Tidak ada dataset'.
+        A dataset is considered present if images exist or a trained model exists.
+        """
+        if exists:
+            return "Ada dataset", "#2e7d32"  # green
+        return "Tidak ada dataset", "#d9534f"  # red
     
     def is_backend_available(self, timeout: int = 3) -> bool:
         """Lightweight check to ensure backend API is reachable.
@@ -240,9 +288,14 @@ class FaceAttendanceApp:
             # Require a configured backend client
             if not getattr(backend_api, 'session', None) or not getattr(backend_api, 'base_url', None):
                 return False
-            today_str = datetime.now().strftime('%Y-%m-%d')
-            url = f"{backend_api.base_url}/api/attendance/today?date={today_str}"
-            resp = backend_api.session.get(url, timeout=timeout)
+            # Prefer very light health endpoint if available
+            health_url = f"{backend_api.base_url}/api/health"
+            resp = backend_api.session.get(health_url, timeout=timeout)
+            if resp is None or getattr(resp, 'status_code', 503) >= 500:
+                # Fallback to /attendance/today if health not available or returns 4xx
+                today_str = datetime.now().strftime('%Y-%m-%d')
+                url = f"{backend_api.base_url}/api/attendance/today?date={today_str}"
+                resp = backend_api.session.get(url, timeout=timeout)
             # Any non-5xx response indicates the server is up (even if endpoint returns 4xx)
             return resp is not None and getattr(resp, 'status_code', 503) < 500
         except Exception:
@@ -269,7 +322,13 @@ class FaceAttendanceApp:
         # Create tabs
         self.create_attendance_tab()
         self.create_dataset_tab()
-        self.create_management_tab()
+        # Management tab removed per request
+        # User list tab (admins/lecturers)
+        try:
+            if self.current_user.get('role') in ['super-admin', 'lecturer']:
+                self.create_users_list_tab()
+        except Exception:
+            pass
         
     def create_attendance_tab(self):
         # Attendance tab
@@ -493,6 +552,15 @@ class FaceAttendanceApp:
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color="#1f538d"
         ).pack(anchor="w", padx=10, pady=(0, 10))
+
+        # Dataset status for current user
+        self.user_dataset_status_label = ctk.CTkLabel(
+            user_info_frame,
+            text="",
+            font=ctk.CTkFont(size=12)
+        )
+        self.user_dataset_status_label.pack(anchor="w", padx=10, pady=(0, 10))
+        self.update_current_user_dataset_status()
         
         # Instructions
         if not self.current_employee_id:
@@ -551,6 +619,100 @@ class FaceAttendanceApp:
         
         self.process_log = ctk.CTkTextbox(progress_frame, width=800, height=400)
         self.process_log.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def create_users_list_tab(self):
+        """Create tab listing users and whether they have a local face dataset."""
+        users_frame = ctk.CTkFrame(self.notebook)
+        self.notebook.add(users_frame, text="Daftar Pengguna")
+
+        header = ctk.CTkLabel(users_frame, text="Daftar Pengguna & Status Dataset", font=ctk.CTkFont(size=16, weight="bold"))
+        header.pack(pady=(10, 5))
+
+        # Summary label
+        summary_frame = ctk.CTkFrame(users_frame)
+        summary_frame.pack(fill="x", padx=10, pady=(0, 10))
+        self.users_summary_label = ctk.CTkLabel(summary_frame, text="", font=ctk.CTkFont(size=12))
+        self.users_summary_label.pack(side="left", padx=10, pady=10)
+
+        refresh_btn = ctk.CTkButton(summary_frame, text="Refresh", command=self.refresh_users_dataset_list, width=120)
+        refresh_btn.pack(side="right", padx=10, pady=10)
+
+        # Tree list
+        table_frame = ctk.CTkFrame(users_frame)
+        table_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.users_tree = ttk.Treeview(table_frame, columns=("ID", "Nama", "Role", "Email", "Dataset"), show="headings", height=18)
+        for col, text, width in [
+            ("ID", "User ID", 80),
+            ("Nama", "Nama", 180),
+            ("Role", "Role", 100),
+            ("Email", "Email", 220),
+            ("Dataset", "Dataset", 140),
+        ]:
+            self.users_tree.heading(col, text=text)
+            self.users_tree.column(col, width=width, anchor='w')
+
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.users_tree.yview)
+        self.users_tree.configure(yscroll=scrollbar.set)
+        self.users_tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Initial load
+        self.refresh_users_dataset_list()
+
+    def refresh_users_dataset_list(self):
+        """Populate the users_tree with users and dataset status."""
+        try:
+            # Clear table
+            if hasattr(self, 'users_tree'):
+                for item in self.users_tree.get_children():
+                    self.users_tree.delete(item)
+
+            if not self.is_backend_available():
+                try:
+                    messagebox.showerror("Backend Tidak Tersedia", "Server backend tidak aktif. Tidak dapat memuat daftar pengguna.")
+                except Exception:
+                    pass
+                if hasattr(self, 'users_summary_label'):
+                    self.users_summary_label.configure(text="Backend tidak tersedia.")
+                return
+
+            results = backend_api.get_users(status='active')
+            if results is None:
+                if hasattr(self, 'users_summary_label'):
+                    self.users_summary_label.configure(text="Gagal memuat data pengguna dari backend.")
+                return
+
+            with_count = 0
+            without_count = 0
+            total = 0
+
+            for u in results:
+                total += 1
+                uid = u.get('user_id')
+                name = u.get('fullname')
+                role = u.get('role')
+                email = u.get('email')
+                exists, count = self._get_dataset_info(uid)
+                if exists:
+                    with_count += 1
+                    dataset_text = "Ada dataset"
+                else:
+                    without_count += 1
+                    dataset_text = "Tidak ada dataset"
+
+                if hasattr(self, 'users_tree'):
+                    self.users_tree.insert("", "end", values=(uid, name, role, email, dataset_text))
+
+            if hasattr(self, 'users_summary_label'):
+                self.users_summary_label.configure(text=f"Total: {total} | Punya dataset: {with_count} | Belum: {without_count}")
+
+        except Exception as e:
+            try:
+                if hasattr(self, 'users_summary_label'):
+                    self.users_summary_label.configure(text=f"Error memuat daftar pengguna: {e}")
+            except Exception:
+                pass
     
     def load_users_list(self):
         """Load list of users for admin interface"""
@@ -569,9 +731,16 @@ class FaceAttendanceApp:
                 self.users_data = {}
                 
                 for user in results:
-                    display_name = f"{user['fullname']} ({user['role']}) - {user['email']}"
+                    # Compute local dataset indicator
+                    exists, count = self._get_dataset_info(user.get('user_id'))
+                    prefix = "✔" if exists else "✖"
+                    suffix = " (Ada dataset)" if exists else " (Tidak ada dataset)"
+                    display_name = f"{prefix} {user['fullname']}{suffix} ({user['role']}) - {user['email']}"
                     user_options.append(display_name)
-                    self.users_data[display_name] = user
+                    user_copy = dict(user)
+                    user_copy['_dataset_exists'] = exists
+                    user_copy['_dataset_count'] = count
+                    self.users_data[display_name] = user_copy
                 
                 self.user_dropdown.configure(values=user_options)
                 self.log_message(f"Loaded {len(user_options)} users")
@@ -588,12 +757,16 @@ class FaceAttendanceApp:
             self.selected_user_data = user
             
             # Update info display
-            info_text = f"👤 {user['fullname']} (ID: {user['user_id']}) - {user['role']}"
+            exists = bool(user.get('_dataset_exists'))
+            count = int(user.get('_dataset_count', 0))
+            status_text, status_color = self._format_dataset_indicator(exists, count)
+            info_text = f"👤 {user['fullname']} (ID: {user['user_id']}) - {user['role']}\nStatus: {status_text}"
             self.selected_user_info.configure(text=info_text)
             
             # Enable buttons
             self.admin_capture_btn.configure(state="normal")
-            self.admin_train_btn.configure(state="normal")
+            # Only enable Train if dataset images exist locally
+            self.admin_train_btn.configure(state=("normal" if count > 0 else "disabled"))
             self.admin_delete_btn.configure(state="normal")
             self.check_access_btn.configure(state="normal")
             
@@ -604,6 +777,24 @@ class FaceAttendanceApp:
             self.admin_train_btn.configure(state="disabled")
             self.admin_delete_btn.configure(state="disabled")
             self.check_access_btn.configure(state="disabled")
+
+    def update_selected_user_info_label(self):
+        """Refresh the selected user info label (dataset status and train button state)."""
+        try:
+            if not hasattr(self, 'selected_user_data'):
+                return
+            u = self.selected_user_data
+            # Recompute dataset status from disk
+            exists, count = self._get_dataset_info(u.get('user_id'))
+            u['_dataset_exists'] = exists
+            u['_dataset_count'] = count
+            status_text, status_color = self._format_dataset_indicator(exists, count)
+            info_text = f"👤 {u['fullname']} (ID: {u['user_id']}) - {u['role']}\nStatus: {status_text}"
+            self.selected_user_info.configure(text=info_text)
+            # Update train button enablement
+            self.admin_train_btn.configure(state=("normal" if count > 0 else "disabled"))
+        except Exception as e:
+            self.log_message(f"Error updating selected user info: {e}")
     
     def check_user_room_access(self):
         """Check if selected user has room access today"""
@@ -729,6 +920,8 @@ class FaceAttendanceApp:
                     self.log_message(f"Model untuk {user['fullname']} berhasil dihapus")
                     self.window.after(0, lambda: messagebox.showinfo("Sukses", f"Model {user['fullname']} berhasil dihapus"))
                     self.window.after(0, self.refresh_models_list)
+                    # Dataset files may still exist; refresh dataset indicator
+                    self.window.after(0, self.update_selected_user_info_label)
                 else:
                     self.log_message("Gagal menghapus model via backend")
                     self.window.after(0, lambda: messagebox.showerror("Error", "Gagal menghapus model"))
@@ -802,12 +995,18 @@ class FaceAttendanceApp:
                 if success:
                     self.log_message("Model berhasil dilatih!")
                     self.window.after(0, lambda: messagebox.showinfo("Sukses", f"Dataset untuk {user_name} berhasil dicapture dan model dilatih!"))
+                    # Refresh indicators for current/selected user
+                    self.window.after(0, self.update_current_user_dataset_status)
+                    self.window.after(0, self.update_selected_user_info_label)
                 else:
                     self.log_message("Gagal melatih model")
                     self.window.after(0, lambda: messagebox.showerror("Error", "Gagal melatih model"))
             else:
                 self.log_message("Gagal capture dataset")
                 self.window.after(0, lambda: messagebox.showerror("Error", "Gagal capture dataset"))
+                # Even if failed, dataset may have partial images; refresh status
+                self.window.after(0, self.update_current_user_dataset_status)
+                self.window.after(0, self.update_selected_user_info_label)
                 
         except Exception as e:
             self.log_message(f"Error in capture dataset: {e}")
@@ -838,6 +1037,8 @@ class FaceAttendanceApp:
             if success:
                 self.log_message("Model berhasil dilatih!")
                 self.window.after(0, lambda: messagebox.showinfo("Sukses", f"Model untuk {user_name} berhasil dilatih!"))
+                # Refresh dataset indicator in case counts changed
+                self.window.after(0, self.update_selected_user_info_label)
             else:
                 self.log_message("Gagal melatih model")
                 self.window.after(0, lambda: messagebox.showerror("Error", "Gagal melatih model"))
@@ -1243,12 +1444,16 @@ class FaceAttendanceApp:
                     messagebox.showinfo("Sukses", "Dataset berhasil dicapture dan model dilatih!")
                     # Refresh models list
                     self.refresh_models_list()
+                    # Refresh user dataset status label
+                    self.update_current_user_dataset_status()
                 else:
                     self.log_process("Gagal melatih model")
                     messagebox.showerror("Error", "Gagal melatih model")
             else:
                 self.log_process("Gagal capture dataset")
                 messagebox.showerror("Error", "Gagal capture dataset")
+            # Refresh dataset status regardless to reflect any new images
+            self.update_current_user_dataset_status()
                 
         # Run in separate thread
         thread = threading.Thread(target=capture_thread)
@@ -1288,6 +1493,7 @@ class FaceAttendanceApp:
                     messagebox.showinfo("Sukses", "Model berhasil dilatih!")
                     # Refresh models list
                     self.refresh_models_list()
+                    self.update_current_user_dataset_status()
                 else:
                     self.log_process("Gagal melatih model")
                     messagebox.showerror("Error", "Gagal melatih model")
@@ -1316,8 +1522,27 @@ class FaceAttendanceApp:
                 messagebox.showinfo("Sukses", "Model berhasil dihapus")
                 # Refresh models list
                 self.refresh_models_list()
+                # Deleting model doesn't affect dataset files, but keep UI fresh
+                self.update_current_user_dataset_status()
             else:
                 messagebox.showerror("Error", "Gagal menghapus model")
+
+    def update_current_user_dataset_status(self):
+        """Refresh dataset status label for current logged-in user."""
+        try:
+            if not hasattr(self, 'user_dataset_status_label'):
+                return
+            if not self.current_employee_id:
+                self.user_dataset_status_label.configure(text="Dataset: -", text_color="#6c757d")
+                return
+            exists, count = self._get_dataset_info(self.current_employee_id)
+            text, color = self._format_dataset_indicator(exists, count)
+            self.user_dataset_status_label.configure(text=f"Status: {text}", text_color=color)
+        except Exception as e:
+            try:
+                self.user_dataset_status_label.configure(text=f"Dataset: error ({e})", text_color="#d9534f")
+            except Exception:
+                pass
                 
     def log_process(self, message):
         """Log message to process log"""
