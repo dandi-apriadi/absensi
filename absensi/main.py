@@ -773,20 +773,21 @@ class FaceAttendanceApp:
                 name = u.get('fullname')
                 role = u.get('role')
                 email = u.get('email')
-                # For users list, show both images count and model presence
+                # For users list, dataset = images OR model (but display only yes/no)
                 images_exist, count = self._get_dataset_info(uid, include_model=False)
                 model_exist = self._has_model_file(uid)
-                if images_exist:
+                has_dataset = images_exist or model_exist
+                if has_dataset:
                     with_images += 1
                 else:
                     without_images += 1
-                dataset_text = f"Gambar: {count} | Model: {'Ya' if model_exist else 'Tidak'}"
+                dataset_text = "Ada dataset" if has_dataset else "Tidak ada dataset"
 
                 if hasattr(self, 'users_tree'):
                     self.users_tree.insert("", "end", values=(uid, name, role, email, dataset_text))
 
             if hasattr(self, 'users_summary_label'):
-                self.users_summary_label.configure(text=f"Total: {total} | Gambar ada: {with_images} | Gambar tidak ada: {without_images}")
+                self.users_summary_label.configure(text=f"Total: {total} | Punya dataset: {with_images} | Belum: {without_images}")
 
         except Exception as e:
             try:
@@ -815,9 +816,11 @@ class FaceAttendanceApp:
                     # Compute local dataset indicator (images) and model presence for clarity
                     images_exist, count = self._get_dataset_info(user.get('user_id'), include_model=False)
                     model_exist = self._has_model_file(user.get('user_id'))
-                    prefix = "✔" if images_exist else "✖"
-                    suffix = f" (Gambar: {count} | Model: {'Ya' if model_exist else 'Tidak'})"
-                    display_name = f"{prefix} {user['fullname']}{suffix} ({user['role']}) - {user['email']}"
+                    # Only show check/cross indicator for dataset availability (no image count)
+                    # Availability means local images OR trained model exists
+                    has_dataset = images_exist or model_exist
+                    prefix = "✔" if has_dataset else "✖"
+                    display_name = f"{prefix} {user['fullname']} ({user['role']}) - {user['email']}"
                     user_options.append(display_name)
                     user_copy = dict(user)
                     user_copy['_dataset_exists'] = images_exist
@@ -840,14 +843,14 @@ class FaceAttendanceApp:
             self.selected_user_data = user
             
             # Update info display
-            exists = bool(user.get('_dataset_exists'))
+            exists = bool(user.get('_dataset_exists'))  # images presence only
             count = int(user.get('_dataset_count', 0))
             model_exist = bool(user.get('_model_exists', False))
-            status_text, status_color = self._format_dataset_indicator(exists, count)
-            # Show both images and model presence for accuracy
+            # Only show check/cross indicator for dataset availability (images OR model)
+            status_icon = "✔" if (exists or model_exist) else "✖"
             info_text = (
                 f"👤 {user['fullname']} (ID: {user['user_id']}) - {user['role']}\n"
-                f"Status: {status_text} | Model: {'Ya' if model_exist else 'Tidak'}"
+                f"Status dataset: {status_icon}"
             )
             self.selected_user_info.configure(text=info_text)
             
@@ -879,10 +882,11 @@ class FaceAttendanceApp:
             u['_dataset_exists'] = exists
             u['_dataset_count'] = count
             u['_model_exists'] = model_exist
-            status_text, status_color = self._format_dataset_indicator(exists, count)
+            # Only show check/cross indicator for dataset availability (images OR model)
+            status_icon = "✔" if (exists or model_exist) else "✖"
             info_text = (
                 f"👤 {u['fullname']} (ID: {u['user_id']}) - {u['role']}\n"
-                f"Status: {status_text} | Model: {'Ya' if model_exist else 'Tidak'}"
+                f"Status dataset: {status_icon}"
             )
             self.selected_user_info.configure(text=info_text)
             # Update train button enablement
