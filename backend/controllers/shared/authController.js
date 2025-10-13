@@ -143,14 +143,12 @@ export const register = async (req, res) => {
             });
         }
 
-        // Hash password
-        const hashedPassword = await argon2.hash(password);
-
         // Prepare simplified user data
         const userData = {
             fullname,
             email,
-            password: hashedPassword,
+            // Pass raw password; model hooks will hash it
+            password,
             role,
             gender: gender || null,
             student_id: student_id || null

@@ -64,7 +64,20 @@ const crossSite = inferredCrossSite || (process.env.CROSS_SITE_COOKIES || 'false
 let sameSite = (process.env.SESSION_SAMESITE || (crossSite ? 'none' : 'lax')).toLowerCase();
 if (!['lax', 'strict', 'none'].includes(sameSite)) sameSite = 'lax';
 const cookieSecure = isProd || sameSite === 'none'; // SameSite=None requires Secure
-const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
+
+// Derive cookie domain if not provided: use eTLD+1 (e.g., siabsensi.site) to cover apex and www
+let cookieDomain = process.env.COOKIE_DOMAIN || undefined;
+if (!cookieDomain) {
+    const hostname = backendHost?.split(':')[0] || '';
+    const isIp = /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
+    const isLocalhost = hostname === 'localhost';
+    if (hostname && !isIp && !isLocalhost) {
+        const parts = hostname.split('.');
+        if (parts.length >= 2) {
+            cookieDomain = `.${parts.slice(-2).join('.')}`;
+        }
+    }
+}
 
 console.log('Session cookie config:', { sameSite, cookieSecure, cookieDomain, FRONTEND_URL, BACKEND_URL });
 
@@ -72,7 +85,7 @@ app.use(
     session({
         secret: process.env.SESS_SECRET || "default_secret_key",
         resave: false,
-        saveUninitialized: true,
+        saveUninitialized: false,
         store: store,
         cookie: {
             secure: cookieSecure, // requires HTTPS if SameSite=None

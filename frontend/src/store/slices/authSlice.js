@@ -1,8 +1,8 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
-// Get base URL from environment variable
-const BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:5001";
+// Get base URL from environment variable; fallback to current origin in browser
+const BASE_URL = process.env.REACT_APP_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : "http://localhost:5001");
 
 const api = axios.create({
     baseURL: BASE_URL,
