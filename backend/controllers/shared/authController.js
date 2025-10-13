@@ -13,6 +13,12 @@ import argon2 from "argon2";
  */
 export const login = async (req, res) => {
     try {
+        // Prevent caching of auth responses (avoid CDN caching Set-Cookie)
+        res.set({
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        });
         const { email, password } = req.body;
 
         // Validation
@@ -245,6 +251,12 @@ export const getProfile = async (req, res) => {
  */
 export const logout = async (req, res) => {
     try {
+        // Prevent caching of auth responses
+        res.set({
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        });
         const sessionUserId = req.session?.user_id || req.session?.userId;
         if (!sessionUserId) {
             return res.status(401).json({

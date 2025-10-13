@@ -44,6 +44,12 @@ class BackendAPI:
         # Store logged-in user data after successful login
         self.current_user = None
 
+        # Basic startup diagnostic
+        try:
+            print(f"[BACKEND API] Base URL: {self.base_url} | verify_ssl={self.verify_ssl} | backend_only={self.backend_only}")
+        except Exception:
+            pass
+
     # =========================
     # AUTH & USERS
     # =========================
@@ -72,7 +78,72 @@ class BackendAPI:
             print(f"[BACKEND API] Login error: {e}")
         return None
 
-    def get_users(self, status: str | None = 'active', limit: int = 1000, page: int = 1):
+    def ping(self, timeout: int = 3):
+        """Lightweight connectivity check that does not require authentication.
+        Returns a dict: { ok: bool, status: int|None, url: str|None, error: str|None }
+        Criteria: any HTTP response with status < 500 counts as reachable.
+        """
+        if not REQUESTS_AVAILABLE or self.session is None:
+            return { 'ok': False, 'status': None, 'url': None, 'error': 'requests_unavailable' }
+        # Candidate probes (prefer not to require auth)
+        probes = [
+            { 'method': 'HEAD', 'url': self.base_url + '/', 'kwargs': { 'allow_redirects': True } },
+            { 'method': 'GET',  'url': self.base_url + '/api/health', 'kwargs': {} },
+            { 'method': 'GET',  'url': self.base_url + '/api/ping', 'kwargs': {} },
+        ]
+        # First pass: honor current SSL verification setting
+        for p in probes:
+            try:
+                method = p['method']
+                url = p['url']
+                kwargs = dict(p.get('kwargs', {}))
+                kwargs['timeout'] = timeout
+                # Use the configured session so SSL verification preference applies
+                resp = self.session.request(method, url, **kwargs)
+                status = getattr(resp, 'status_code', 0)
+                if status and status < 500:
+                    try:
+                        print(f"[BACKEND API] ping OK: {status} {url}")
+                    except Exception:
+                        pass
+                    return { 'ok': True, 'status': status, 'url': url, 'error': None }
+                else:
+                    try:
+                        print(f"[BACKEND API] ping HTTP error: {status} {url}")
+                    except Exception:
+                        pass
+            except Exception as e:
+                try:
+                    print(f"[BACKEND API] ping request error for {p['url']}: {e}")
+                except Exception:
+                    pass
+        # Second pass: if verification might be the issue, retry with verify=False as a diagnostic only
+        try_insecure = True
+        if try_insecure:
+            for p in probes:
+                try:
+                    method = p['method']
+                    url = p['url']
+                    kwargs = dict(p.get('kwargs', {}))
+                    kwargs['timeout'] = timeout
+                    kwargs['verify'] = False
+                    resp = self.session.request(method, url, **kwargs)
+                    status = getattr(resp, 'status_code', 0)
+                    if status and status < 500:
+                        try:
+                            print(f"[BACKEND API] ping OK with verify=False: {status} {url}")
+                            print("[BACKEND API] Hint: SSL verification appears to fail. Consider setting BACKEND_API_VERIFY_SSL=false if using self-signed certs.")
+                        except Exception:
+                            pass
+                        return { 'ok': True, 'status': status, 'url': url, 'error': 'verify_false_needed' }
+                except Exception as e:
+                    try:
+                        print(f"[BACKEND API] insecure ping error for {p['url']}: {e}")
+                    except Exception:
+                        pass
+        return { 'ok': False, 'status': None, 'url': None, 'error': 'all_probes_failed' }
+
+    def get_users(self, status: str | None = None, limit: int = 1000, page: int = 1):
         """Fetch users list from backend admin endpoint.
         Returns list of dicts with keys: user_id, fullname, role, email, status (if available)
         """
@@ -82,6 +153,8 @@ class BackendAPI:
         try:
             # Use administrator API which supports pagination and filters
             params = { 'limit': limit, 'page': page }
+            # NOTE: Current backend does not have a 'status' column in Users model.
+            # Avoid sending this filter unless backend adds support.
             if status:
                 params['status'] = status
             url = f"{self.base_url}/api/admin/users"

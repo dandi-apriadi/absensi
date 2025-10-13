@@ -15,17 +15,55 @@ from argon2.exceptions import VerifyMismatchError
 from backend_api import backend_api
 from relay_control import activate_door, success_beep, denied_beep, cleanup_gpio
 
+# Ensure CustomTkinter appearance is set before any windows are created
+try:
+    ctk.set_appearance_mode("light")
+    ctk.set_default_color_theme("blue")
+except Exception:
+    pass
+
 class LoginWindow:
-    def __init__(self):
-        self.window = ctk.CTk()
+    def __init__(self, root, on_success_callback):
+        """
+        Login window presented as a Toplevel, mounted on a shared CTk root.
+        Avoids creating multiple Tk roots which can cause 'invalid command name' errors
+        from pending after-callbacks when a root is destroyed.
+        """
+        self.root = root
+        self.on_success = on_success_callback
+
+        # Create a Toplevel for login so we can keep a single root alive
+        self.window = ctk.CTkToplevel(self.root)
         self.window.title("Sistem Absensi Face Recognition - Login")
         self.window.geometry("400x500")
         self.window.resizable(False, False)
-        
-        # Set appearance mode and color theme
-        ctk.set_appearance_mode("light")
-        ctk.set_default_color_theme("blue")
-        
+
+        # Appearance already set globally; keep idempotent calls safe
+        try:
+            ctk.set_appearance_mode("light")
+            ctk.set_default_color_theme("blue")
+        except Exception:
+            pass
+
+        # Ensure the login window is modal-ish
+        try:
+            self.window.transient(self.root)
+            self.window.grab_set()
+            # Ensure window is visible and focused on top
+            self.window.deiconify()
+            self.window.lift()
+            self.window.focus_force()
+            # Wait until the window is actually visible
+            try:
+                self.window.wait_visibility()
+            except Exception:
+                pass
+            # Make topmost briefly to bring to front, then drop
+            self.window.attributes('-topmost', True)
+            self.window.after(200, lambda: self.window.attributes('-topmost', False))
+        except Exception:
+            pass
+
         self.setup_ui()
         
     def setup_ui(self):
@@ -129,10 +167,17 @@ class LoginWindow:
         # Open main app on success
         if logged_in:
             print("[LOGIN DEBUG] Login successful, opening main app...")
-            self.window.destroy()
-            # Open main application
-            app = FaceAttendanceApp(self.current_user)
-            app.run()
+            try:
+                # Invoke callback to mount the main app on the existing root
+                if callable(self.on_success):
+                    self.on_success(self.current_user)
+            finally:
+                # Destroy only the Toplevel, keep the root alive
+                try:
+                    self.window.grab_release()
+                except Exception:
+                    pass
+                self.window.destroy()
         else:
             print("[LOGIN DEBUG] Login failed")
             messagebox.showerror("Error", "Email atau password salah")
@@ -205,8 +250,9 @@ class LoginWindow:
         self.window.mainloop()
 
 class FaceAttendanceApp:
-    def __init__(self, current_user):
-        self.window = ctk.CTk()
+    def __init__(self, current_user, root: ctk.CTk | None = None):
+        # Use provided root if available to keep a single Tk root
+        self.window = root if root is not None else ctk.CTk()
         self.window.title("Sistem Absensi Face Recognition")
         self.window.geometry("1200x800")
         
@@ -230,7 +276,7 @@ class FaceAttendanceApp:
         self._recognition_cooldown_sec = 3.0
         # Periodic backend health check when camera is running
         self._next_backend_ping_at = 0.0
-        
+        # Build UI after initializing state
         self.setup_ui()
 
     def _get_dataset_info(self, user_id):
@@ -287,18 +333,27 @@ class FaceAttendanceApp:
         try:
             # Require a configured backend client
             if not getattr(backend_api, 'session', None) or not getattr(backend_api, 'base_url', None):
+                print("[APP] Backend client/session not initialized")
                 return False
-            # Prefer very light health endpoint if available
-            health_url = f"{backend_api.base_url}/api/health"
-            resp = backend_api.session.get(health_url, timeout=timeout)
-            if resp is None or getattr(resp, 'status_code', 503) >= 500:
-                # Fallback to /attendance/today if health not available or returns 4xx
-                today_str = datetime.now().strftime('%Y-%m-%d')
-                url = f"{backend_api.base_url}/api/attendance/today?date={today_str}"
-                resp = backend_api.session.get(url, timeout=timeout)
-            # Any non-5xx response indicates the server is up (even if endpoint returns 4xx)
-            return resp is not None and getattr(resp, 'status_code', 503) < 500
-        except Exception:
+            # Use backend_api.ping for robust detection (accepts 2xx/3xx/4xx)
+            ping = None
+            try:
+                ping = backend_api.ping(timeout=timeout)
+            except Exception as e:
+                print(f"[APP] backend_api.ping error: {e}")
+            if ping and ping.get('ok'):
+                return True
+            # Last resort: try a simple GET to / (accepting 4xx too)
+            try:
+                resp = backend_api.session.get(backend_api.base_url + '/', timeout=timeout, allow_redirects=True)
+                if resp is not None and getattr(resp, 'status_code', 503) < 500:
+                    return True
+            except Exception as e:
+                print(f"[APP] Backend root GET failed: {e}")
+            print("[APP] Backend not reachable")
+            return False
+        except Exception as e:
+            print(f"[APP] is_backend_available unexpected error: {e}")
             return False
         
     def get_current_employee_info(self):
@@ -677,7 +732,7 @@ class FaceAttendanceApp:
                     self.users_summary_label.configure(text="Backend tidak tersedia.")
                 return
 
-            results = backend_api.get_users(status='active')
+            results = backend_api.get_users()
             if results is None:
                 if hasattr(self, 'users_summary_label'):
                     self.users_summary_label.configure(text="Gagal memuat data pengguna dari backend.")
@@ -721,7 +776,7 @@ class FaceAttendanceApp:
             if not self.is_backend_available():
                 self.log_message("⚠️ Backend tidak tersedia. Tidak dapat memuat daftar user.")
                 return
-            results = backend_api.get_users(status='active')
+            results = backend_api.get_users()
             if results is None:
                 self.log_message("⚠️ Gagal memuat daftar user dari backend.")
                 return
@@ -1110,7 +1165,7 @@ class FaceAttendanceApp:
             # Require backend availability; backend API only
             if not self.is_backend_available():
                 return []
-            results = backend_api.get_users(status='active')
+            results = backend_api.get_users()
             if results is None:
                 return []
             
@@ -1132,22 +1187,53 @@ class FaceAttendanceApp:
                 messagebox.showerror("Backend Tidak Tersedia", "Server backend tidak aktif. Tidak dapat memulai mode Absensi.")
                 return
 
-            self.camera = cv2.VideoCapture(0)
+            # Try to find a working camera index (0..2)
+            selected_idx = None
+            for idx in (0, 1, 2):
+                cap = cv2.VideoCapture(idx)
+                if cap is not None and cap.isOpened():
+                    selected_idx = idx
+                    cap.release()
+                    break
+                if cap is not None:
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+            if selected_idx is None:
+                messagebox.showerror("Error", "Tidak dapat mengakses kamera (tidak ditemukan perangkat kamera)")
+                return
+
+            self._camera_device_index = selected_idx
+            self.camera = cv2.VideoCapture(selected_idx)
             if not self.camera.isOpened():
-                messagebox.showerror("Error", "Tidak dapat mengakses kamera")
+                messagebox.showerror("Error", f"Tidak dapat mengakses kamera pada index {selected_idx}")
                 return
                 
             self.camera_running = True
             self.start_camera_btn.configure(state="disabled")
             self.stop_camera_btn.configure(state="normal")
             
-            # Load face models
+            # Load face models (don't fail camera if models not found; allow video preview)
             models_loaded = self.face_system.load_all_face_models()
             if not models_loaded:
-                # Fail fast if we cannot load models from backend
-                self.stop_camera()
-                messagebox.showerror("Error", "Gagal memuat model dari backend. Pastikan server backend berjalan.")
-                return
+                self.log_recognition("⚠️ Belum ada model wajah yang aktif. Kamera tetap berjalan (preview).")
+                # Schedule periodic retry to load models while camera is running
+                try:
+                    if hasattr(self, '_models_retry_job') and self._models_retry_job:
+                        self.window.after_cancel(self._models_retry_job)
+                except Exception:
+                    pass
+                def _retry_load_models():
+                    if not self.camera_running:
+                        return
+                    ok = self.face_system.load_all_face_models()
+                    if ok:
+                        self.log_recognition("✅ Model wajah berhasil dimuat. Recognition aktif.")
+                        self._models_retry_job = None
+                    else:
+                        self._models_retry_job = self.window.after(10000, _retry_load_models)
+                self._models_retry_job = self.window.after(5000, _retry_load_models)
             
             # Start camera thread
             self.camera_thread = threading.Thread(target=self.camera_loop)
@@ -1175,7 +1261,8 @@ class FaceAttendanceApp:
             
             # Clear camera display
             if hasattr(self, 'camera_frame') and self.camera_frame.winfo_exists():
-                self.camera_frame.configure(image="", text="Kamera tidak aktif")
+                # Use None instead of empty string to avoid CTk image warning
+                self.camera_frame.configure(image=None, text="Kamera tidak aktif")
             
             if hasattr(self, 'log_recognition'):
                 self.log_recognition("Kamera dihentikan")
@@ -1192,18 +1279,22 @@ class FaceAttendanceApp:
                 if now >= self._next_backend_ping_at:
                     self._next_backend_ping_at = now + 5.0  # check every 5s
                     if not self.is_backend_available(timeout=2):
-                        self.window.after(0, lambda: self.log_recognition("⚠️ Backend down terdeteksi. Menghentikan kamera."))
-                        self.window.after(0, self.stop_camera)
-                        break
+                        # Pause recognition but keep preview if possible (don't hard-stop camera)
+                        self.window.after(0, lambda: self.log_recognition("⚠️ Backend tidak tersedia. Recognition dijeda, preview tetap berjalan."))
                 ret, frame = self.camera.read()
                 if not ret:
+                    self.window.after(0, lambda: self.log_recognition("⚠️ Tidak dapat membaca frame dari kamera"))
                     break
                     
                 # Resize frame for better performance
                 frame = cv2.resize(frame, (640, 480))
                 
-                # Face recognition
-                recognized_employees, face_locations = self.face_system.recognize_face(frame)
+                # Face recognition (only if at least one model is loaded)
+                do_recognition = bool(getattr(self.face_system, 'known_faces', {}))
+                if do_recognition:
+                    recognized_employees, face_locations = self.face_system.recognize_face(frame)
+                else:
+                    recognized_employees, face_locations = ([], [])
                 
                 # Draw rectangles and labels for each detected face
                 for i, (left, top, right, bottom) in enumerate(face_locations):
@@ -1243,11 +1334,19 @@ class FaceAttendanceApp:
                                   (left, top - 10), 
                                   cv2.FONT_HERSHEY_SIMPLEX, 
                                   0.7, (0, 0, 255), 2)
+                if not do_recognition:
+                    # Show overlay hint that models are not loaded yet
+                    cv2.putText(frame, "Model belum dimuat - hanya preview", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
                         
                 # Convert frame for tkinter display
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img = Image.fromarray(frame_rgb)
-                img_tk = ImageTk.PhotoImage(img)
+                try:
+                    from customtkinter import CTkImage
+                    img_tk = CTkImage(light_image=img, size=(frame_rgb.shape[1], frame_rgb.shape[0]))
+                except Exception:
+                    # Fallback if CTkImage not available
+                    img_tk = ImageTk.PhotoImage(img)
                 
                 # Update display
                 self.window.after(0, lambda: self.update_camera_display(img_tk))
@@ -1663,14 +1762,15 @@ class FaceAttendanceApp:
             print(f"Error refreshing models list: {e}")
             # Don't show error dialog, just log it
             
-    def run(self):
+    def mount(self):
+        """Mount the app UI into the existing root and perform initial loads."""
         # Initialize data
         try:
             self.refresh_attendance_data()
             self.refresh_models_list()
         except Exception as e:
             print(f"Error during initialization: {e}")
-        
+
         # Set up proper cleanup on window close
         def on_closing():
             try:
@@ -1683,11 +1783,17 @@ class FaceAttendanceApp:
             finally:
                 try:
                     self.window.destroy()
-                except:
+                except Exception:
                     pass
-        
-        self.window.protocol("WM_DELETE_WINDOW", on_closing)
-        
+
+        try:
+            self.window.protocol("WM_DELETE_WINDOW", on_closing)
+        except Exception:
+            pass
+
+    def run(self):
+        """Mount and start the mainloop (for standalone use)."""
+        self.mount()
         # Start main loop
         try:
             self.window.mainloop()
@@ -1704,9 +1810,60 @@ class FaceAttendanceApp:
                 print(f"Error in final cleanup: {e}")
 
 def main():
-    # First show login window
-    login = LoginWindow()
-    login.run()
+    """Start the app using a single CTk root with a modal login Toplevel."""
+    # Create a single root and keep it hidden until login succeeds
+    print("[APP] Starting GUI root...")
+    root = ctk.CTk()
+
+    app_container = {}
+
+    def on_login_success(user_payload):
+        # Show the main window and mount the app into this root
+        try:
+            root.deiconify()
+        except Exception:
+            pass
+        app = FaceAttendanceApp(user_payload, root=root)
+        app.mount()
+        app_container['app'] = app
+
+    # Show login as Toplevel
+    print("[APP] Showing login window...")
+    login = LoginWindow(root, on_success_callback=on_login_success)
+    print("[APP] Login window created.")
+
+    # Center the login on screen relative to root
+    try:
+        root.update_idletasks()
+        login.window.update_idletasks()
+        w = max(400, login.window.winfo_width() or 400)
+        h = max(500, login.window.winfo_height() or 500)
+        x = (login.window.winfo_screenwidth() // 2) - (w // 2)
+        y = (login.window.winfo_screenheight() // 2) - (h // 2)
+        login.window.geometry(f"{w}x{h}+{x}+{y}")
+    except Exception as e:
+        print(f"[APP] Centering login failed: {e}")
+
+    # If for some reason the login is not visible after a short delay, ensure visibility
+    def _ensure_login_visible():
+        try:
+            if not login.window.winfo_viewable():
+                login.window.deiconify()
+                login.window.lift()
+                login.window.focus_force()
+        except Exception:
+            pass
+    try:
+        root.after(500, _ensure_login_visible)
+    except Exception:
+        pass
+
+    # Run a single mainloop for the entire app lifecycle
+    print("[APP] Entering main loop...")
+    try:
+        root.mainloop()
+    except Exception as e:
+        print(f"Error in root main loop: {e}")
 
 if __name__ == "__main__":
     main()

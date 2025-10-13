@@ -53,8 +53,8 @@ export const getAttendanceHistory = async (req, res) => {
                 sa.notes,
                 u.student_id as student_nim,
                 u.fullname as student_name,
-                cc.course_name,
-                cc.course_code,
+                c.course_name,
+                c.course_code,
                 cc.class_name,
                 'N/A' as room_name,
                 asess.session_number,
@@ -63,42 +63,38 @@ export const getAttendanceHistory = async (req, res) => {
             LEFT JOIN attendance_sessions asess ON sa.session_id = asess.id
             LEFT JOIN users u ON sa.student_id = u.user_id
             LEFT JOIN course_classes cc ON asess.class_id = cc.id
+            LEFT JOIN courses c ON cc.course_id = c.id
             LEFT JOIN users verifier ON sa.verified_by = verifier.user_id
             WHERE 1=1
         `;
         
-        let queryParams = [];
-        let paramIndex = 1;
+    let queryParams = [];
         
         // Add filters to query
         if (status && status !== 'all') {
-            baseQuery += ` AND sa.status = $${paramIndex}`;
+            baseQuery += ` AND sa.status = ?`;
             queryParams.push(status);
-            paramIndex++;
         }
         
         if (startDate) {
-            baseQuery += ` AND DATE(sa.check_in_time) >= $${paramIndex}`;
+            baseQuery += ` AND DATE(sa.check_in_time) >= ?`;
             queryParams.push(startDate);
-            paramIndex++;
         }
         
         if (endDate) {
-            baseQuery += ` AND DATE(sa.check_in_time) <= $${paramIndex}`;
+            baseQuery += ` AND DATE(sa.check_in_time) <= ?`;
             queryParams.push(endDate);
-            paramIndex++;
         }
         
         if (course && course !== 'all') {
-            baseQuery += ` AND asess.class_id = $${paramIndex}`;
+            baseQuery += ` AND asess.class_id = ?`;
             queryParams.push(course);
-            paramIndex++;
         }
         
         if (search) {
-            baseQuery += ` AND (u.fullname ILIKE $${paramIndex} OR u.student_id ILIKE $${paramIndex + 1} OR cc.course_name ILIKE $${paramIndex + 2})`;
-            queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
-            paramIndex += 3;
+            baseQuery += ` AND (u.fullname LIKE ? OR u.student_id LIKE ? OR c.course_name LIKE ?)`;
+            const term = `%${search}%`;
+            queryParams.push(term, term, term);
         }
         
         // Get total count
@@ -108,7 +104,7 @@ export const getAttendanceHistory = async (req, res) => {
         `;
         
         const [countResult] = await db.query(countQuery, {
-            bind: queryParams,
+            replacements: queryParams,
             type: QueryTypes.SELECT
         });
         
@@ -116,13 +112,13 @@ export const getAttendanceHistory = async (req, res) => {
         const totalPages = Math.ceil(totalRecords / parseInt(limit));
         
         // Add pagination to main query
-        baseQuery += ` ORDER BY sa.check_in_time DESC`;
-        baseQuery += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-        queryParams.push(parseInt(limit), offset);
+    baseQuery += ` ORDER BY sa.check_in_time DESC`;
+    baseQuery += ` LIMIT ? OFFSET ?`;
+    queryParams.push(parseInt(limit), offset);
         
         // Execute main query
         const records = await db.query(baseQuery, {
-            bind: queryParams,
+            replacements: queryParams,
             type: QueryTypes.SELECT
         });
         
@@ -138,45 +134,42 @@ export const getAttendanceHistory = async (req, res) => {
             LEFT JOIN attendance_sessions asess ON sa.session_id = asess.id
             LEFT JOIN users u ON sa.student_id = u.user_id
             LEFT JOIN course_classes cc ON asess.class_id = cc.id
+            LEFT JOIN courses c ON cc.course_id = c.id
             WHERE 1=1
         `;
         
         let statsQueryWithFilters = statsQuery;
-        let statsParams = [];
-        let statsParamIndex = 1;
+    let statsParams = [];
         
         // Apply same filters to statistics
         if (status && status !== 'all') {
-            statsQueryWithFilters += ` AND sa.status = $${statsParamIndex}`;
+            statsQueryWithFilters += ` AND sa.status = ?`;
             statsParams.push(status);
-            statsParamIndex++;
         }
         
         if (startDate) {
-            statsQueryWithFilters += ` AND DATE(sa.check_in_time) >= $${statsParamIndex}`;
+            statsQueryWithFilters += ` AND DATE(sa.check_in_time) >= ?`;
             statsParams.push(startDate);
-            statsParamIndex++;
         }
         
         if (endDate) {
-            statsQueryWithFilters += ` AND DATE(sa.check_in_time) <= $${statsParamIndex}`;
+            statsQueryWithFilters += ` AND DATE(sa.check_in_time) <= ?`;
             statsParams.push(endDate);
-            statsParamIndex++;
         }
         
         if (course && course !== 'all') {
-            statsQueryWithFilters += ` AND asess.class_id = $${statsParamIndex}`;
+            statsQueryWithFilters += ` AND asess.class_id = ?`;
             statsParams.push(course);
-            statsParamIndex++;
         }
         
         if (search) {
-            statsQueryWithFilters += ` AND (u.fullname ILIKE $${statsParamIndex} OR u.student_id ILIKE $${statsParamIndex + 1} OR cc.course_name ILIKE $${statsParamIndex + 2})`;
-            statsParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+            statsQueryWithFilters += ` AND (u.fullname LIKE ? OR u.student_id LIKE ? OR c.course_name LIKE ?)`;
+            const term = `%${search}%`;
+            statsParams.push(term, term, term);
         }
         
         const [statistics] = await db.query(statsQueryWithFilters, {
-            bind: statsParams,
+            replacements: statsParams,
             type: QueryTypes.SELECT
         });
         
@@ -214,13 +207,14 @@ export const getCourses = async (req, res) => {
         const coursesQuery = `
             SELECT DISTINCT
                 cc.id,
-                cc.course_name as name,
-                cc.course_code,
+                c.course_name as name,
+                c.course_code,
                 cc.class_name
             FROM course_classes cc
             INNER JOIN attendance_sessions asess ON cc.id = asess.class_id
-            WHERE cc.active = true
-            ORDER BY cc.course_name, cc.class_name
+            INNER JOIN courses c ON c.id = cc.course_id
+            WHERE cc.status = 'active'
+            ORDER BY c.course_name, cc.class_name
         `;
         
         const courses = await db.query(coursesQuery, {
@@ -264,8 +258,8 @@ export const exportToExcel = async (req, res) => {
                 sa.notes,
                 u.student_id as student_nim,
                 u.fullname as student_name,
-                cc.course_name,
-                cc.course_code,
+                c.course_name,
+                c.course_code,
                 cc.class_name,
                 'N/A' as room_name,
                 asess.session_number,
@@ -274,6 +268,7 @@ export const exportToExcel = async (req, res) => {
             LEFT JOIN attendance_sessions asess ON sa.session_id = asess.id
             LEFT JOIN users u ON sa.student_id = u.user_id
             LEFT JOIN course_classes cc ON asess.class_id = cc.id
+            LEFT JOIN courses c ON cc.course_id = c.id
             LEFT JOIN users verifier ON sa.verified_by = verifier.user_id
             WHERE 1=1
         `;
@@ -307,7 +302,7 @@ export const exportToExcel = async (req, res) => {
         }
         
         if (search) {
-            baseQuery += ` AND (u.fullname ILIKE $${paramIndex} OR u.student_id ILIKE $${paramIndex + 1} OR cc.course_name ILIKE $${paramIndex + 2})`;
+            baseQuery += ` AND (u.fullname ILIKE $${paramIndex} OR u.student_id ILIKE $${paramIndex + 1} OR c.course_name ILIKE $${paramIndex + 2})`;
             queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
         }
         

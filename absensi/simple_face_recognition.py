@@ -420,93 +420,99 @@ class SimpleFaceRecognition:
                         results = data
                     else:
                         results = []
-            # Fallback DB
+                else:
+                    try:
+                        print(f"[FACE MODELS] Backend list failed: {resp.status_code} {resp.text}")
+                    except Exception:
+                        pass
+            # Fallback DB when not in backend-only mode
             if results is None:
                 if getattr(backend_api, 'backend_only', False):
-                    return []
-                query = """
-                SELECT ft.employee_id, ft.model_path, u.fullname 
-                FROM face_training ft
-                JOIN users u ON ft.employee_id = u.user_id
-                WHERE ft.status = 'active'
-                """
-                results = simple_db.execute_query(query)
+                    print("[FACE MODELS] Backend-only mode active and backend response missing. Proceeding to scan local model files...")
+                    results = []  # allow local file scan below
+                else:
+                    query = """
+                    SELECT ft.employee_id, ft.model_path, u.fullname 
+                    FROM face_training ft
+                    JOIN users u ON ft.employee_id = u.user_id
+                    WHERE ft.status = 'active'
+                    """
+                    results = simple_db.execute_query(query)
             
-            if results:
-                self.known_faces = {}
-                loaded = 0
-                skipped = 0
-                
-                for row in results:
-                    try:
-                        # Load the trained model file
-                        # Resolve model path robustly
-                        model_path = self._resolve_path(row['model_path'])
-                        if not os.path.exists(model_path):
-                            # Fallback: construct path from employee_id
-                            eid = str(row['employee_id']).strip()
-                            candidate = os.path.join(self.models_path, f"employee_{eid}_model.yml")
-                            model_path = self._resolve_path(candidate)
+            # Load models referenced by results (if any) and then always scan local models
+            self.known_faces = {}
+            loaded = 0
+            skipped = 0
 
-                        if os.path.exists(model_path):
-                            recognizer = cv2.face.LBPHFaceRecognizer_create()
-                            recognizer.read(model_path)
-                            self.known_faces[row['employee_id']] = {
-                                'name': row['fullname'],
-                                'recognizer': recognizer
-                            }
-                            loaded += 1
-                        else:
-                            print(f"Model file not found, skipping: {model_path}")
-                            skipped += 1
-                        
-                    except Exception as e:
-                        print(f"Error loading model for employee {row['employee_id']}: {e}")
-                        skipped += 1
-                        continue
-                        
-                # Fallback scan: load any models present in models directory
+            for row in (results or []):
                 try:
-                    import glob
-                    pattern = os.path.join(self.models_path, "employee_*_model.yml")
-                    for path in glob.glob(pattern):
-                        try:
-                            filename = os.path.basename(path)
-                            # Extract employee_id between employee_ and _model.yml
-                            start = len("employee_")
-                            end = filename.rfind("_model.yml")
-                            if end > start:
-                                eid = filename[start:end]
-                                if eid not in self.known_faces:
-                                    # Lookup fullname from users table
-                                    user_rows = None
-                                    if backend_api and getattr(backend_api, 'session', None):
-                                        # No specific endpoint; keep DB fallback here
-                                        pass
-                                    if user_rows is None:
-                                        user_rows = simple_db.execute_query(
-                                            "SELECT fullname FROM users WHERE user_id = %s",
-                                            (eid,)
-                                        )
-                                    fullname = user_rows[0]['fullname'] if user_rows else eid
-                                    recognizer = cv2.face.LBPHFaceRecognizer_create()
-                                    recognizer.read(path)
-                                    self.known_faces[eid] = {
-                                        'name': fullname,
-                                        'recognizer': recognizer
-                                    }
-                                    loaded += 1
-                        except Exception as e:
-                            print(f"Fallback scan load error for {path}: {e}")
-                            continue
-                except Exception as e:
-                    print(f"Fallback scan error: {e}")
+                    # Load the trained model file
+                    model_path = self._resolve_path(row['model_path'])
+                    if not os.path.exists(model_path):
+                        # Fallback: construct path from employee_id
+                        eid = str(row['employee_id']).strip()
+                        candidate = os.path.join(self.models_path, f"employee_{eid}_model.yml")
+                        model_path = self._resolve_path(candidate)
 
-                print(f"Loaded {loaded} face models, skipped {skipped}")
-                return loaded > 0
-            else:
-                print("No face models found in database")
+                    if os.path.exists(model_path):
+                        recognizer = cv2.face.LBPHFaceRecognizer_create()
+                        recognizer.read(model_path)
+                        self.known_faces[row['employee_id']] = {
+                            'name': row.get('fullname') or str(row['employee_id']),
+                            'recognizer': recognizer
+                        }
+                        loaded += 1
+                    else:
+                        print(f"Model file not found, skipping: {model_path}")
+                        skipped += 1
+                    
+                except Exception as e:
+                    print(f"Error loading model for employee {row.get('employee_id')}: {e}")
+                    skipped += 1
+                    continue
+
+            # Always scan local models directory for any present models
+            try:
+                import glob
+                pattern = os.path.join(self.models_path, "employee_*_model.yml")
+                for path in glob.glob(pattern):
+                    try:
+                        filename = os.path.basename(path)
+                        # Extract employee_id between employee_ and _model.yml
+                        start = len("employee_")
+                        end = filename.rfind("_model.yml")
+                        if end > start:
+                            eid = filename[start:end]
+                            if eid not in self.known_faces:
+                                # Lookup fullname from users table (optional)
+                                fullname = None
+                                try:
+                                    user_rows = simple_db.execute_query(
+                                        "SELECT fullname FROM users WHERE user_id = %s",
+                                        (eid,)
+                                    )
+                                    fullname = user_rows[0]['fullname'] if user_rows else None
+                                except Exception:
+                                    pass
+                                recognizer = cv2.face.LBPHFaceRecognizer_create()
+                                recognizer.read(path)
+                                self.known_faces[eid] = {
+                                    'name': fullname or eid,
+                                    'recognizer': recognizer
+                                }
+                                loaded += 1
+                    except Exception as e:
+                        print(f"Fallback scan load error for {path}: {e}")
+                        continue
+            except Exception as e:
+                print(f"Fallback scan error: {e}")
+
+            if loaded == 0:
+                print("No face models found (backend/DB/local scan)")
                 return False
+            else:
+                print(f"Loaded {loaded} face models, skipped {skipped}")
+                return True
                 
         except Exception as e:
             print(f"Error loading face models: {e}")

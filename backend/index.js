@@ -12,10 +12,16 @@ dotenv.config();
 // Pastikan app dideklarasikan sebelum dipakai
 const app = express();
 
-// When behind a reverse proxy (Nginx, Cloudflare), trust the proxy so secure cookies work in production
-// You can disable by setting TRUST_PROXY=false in env
-if ((process.env.TRUST_PROXY || 'true').toLowerCase() !== 'false') {
-    app.set('trust proxy', 1);
+// When behind reverse proxies (Nginx, Cloudflare), trust the proxy so req.secure is set correctly
+// TRUST_PROXY options:
+//  - 'false' to disable
+//  - 'true' to trust all proxies
+//  - a number string (e.g. '1') to trust that many hops
+const TRUST_PROXY_ENV = (process.env.TRUST_PROXY || 'true').toLowerCase();
+if (TRUST_PROXY_ENV !== 'false') {
+    const tp = TRUST_PROXY_ENV === 'true' ? true : (Number.isFinite(parseInt(TRUST_PROXY_ENV, 10)) ? parseInt(TRUST_PROXY_ENV, 10) : true);
+    app.set('trust proxy', tp);
+    console.log('Trust proxy setting:', tp);
 }
 
 // Determine allowed origin(s)
@@ -63,7 +69,12 @@ const inferredCrossSite = frontendHost && backendHost && frontendHost !== backen
 const crossSite = inferredCrossSite || (process.env.CROSS_SITE_COOKIES || 'false').toLowerCase() === 'true';
 let sameSite = (process.env.SESSION_SAMESITE || (crossSite ? 'none' : 'lax')).toLowerCase();
 if (!['lax', 'strict', 'none'].includes(sameSite)) sameSite = 'lax';
-const cookieSecure = isProd || sameSite === 'none'; // SameSite=None requires Secure
+// Determine cookie secure flag; prefer 'auto' so it follows req.secure
+// Allow explicit override via SESSION_COOKIE_SECURE
+const envSecure = (process.env.SESSION_COOKIE_SECURE || '').toLowerCase();
+let cookieSecure = 'auto';
+if (envSecure === 'false') cookieSecure = false;
+if (envSecure === 'true') cookieSecure = true;
 
 // Derive cookie domain if not provided: use eTLD+1 (e.g., siabsensi.site) to cover apex and www
 let cookieDomain = process.env.COOKIE_DOMAIN || undefined;
@@ -87,8 +98,9 @@ app.use(
         resave: false,
         saveUninitialized: false,
         store: store,
+        proxy: true, // honor X-Forwarded-* when setting secure cookies
         cookie: {
-            secure: cookieSecure, // requires HTTPS if SameSite=None
+            secure: cookieSecure, // 'auto' follows req.secure; can be overridden below
             httpOnly: true,
             sameSite: sameSite,
             domain: cookieDomain,
@@ -96,6 +108,33 @@ app.use(
         },
     })
 );
+
+// Per-request cookie tuner: if proxy headers are missing but this is same-origin, relax to SameSite=Lax + non-secure
+app.use((req, res, next) => {
+    try {
+        const requestHost = (req.headers.host || '').toLowerCase().split(':')[0];
+        const isXfpHttps = (req.headers['x-forwarded-proto'] || '').toString().toLowerCase() === 'https';
+        const sameOriginAsFrontend = requestHost && frontendHost && requestHost === frontendHost.split(':')[0];
+
+        if (req.session && req.session.cookie) {
+            // Enforce cross-site requirements: SameSite=None + Secure
+            if (!sameOriginAsFrontend || sameSite === 'none' || crossSite) {
+                req.session.cookie.sameSite = 'none';
+                req.session.cookie.secure = true;
+            } else {
+                // Same-origin: ensure cookie can be issued even if req.secure is false (proxy headers missing)
+                req.session.cookie.sameSite = 'lax';
+                if (!req.secure && !isXfpHttps && envSecure !== 'true') {
+                    // Only relax if not explicitly forced secure by env
+                    req.session.cookie.secure = false;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Cookie tuner warning:', e?.message);
+    }
+    next();
+});
 
 // Database initialization
 const initDatabase = async () => {

@@ -6,6 +6,7 @@ export const verifyUser = async (req, res, next) => {
     console.log('=== VERIFY USER MIDDLEWARE ===');
     console.log('Request method:', req.method);
     console.log('Request URL:', req.url);
+    console.log('req.secure:', req.secure, 'x-forwarded-proto:', req.headers['x-forwarded-proto']);
     console.log('Session exists:', !!req.session);
     console.log('Session ID:', req.session?.id);
     console.log('Session user_id:', req.session?.user_id);
