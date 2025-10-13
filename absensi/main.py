@@ -279,9 +279,10 @@ class FaceAttendanceApp:
         # Build UI after initializing state
         self.setup_ui()
 
-    def _get_dataset_info(self, user_id):
+    def _get_dataset_info(self, user_id, include_model: bool = True):
         """Return tuple (exists: bool, count: int) reflecting dataset readiness.
-        exists is True if either dataset images exist OR a trained model file exists.
+        - When include_model=True: exists is True if images exist OR a trained model file exists.
+        - When include_model=False: exists reflects only the presence of dataset images.
         count is the number of local dataset images found (jpg/jpeg/png).
         """
         try:
@@ -297,11 +298,19 @@ class FaceAttendanceApp:
             except Exception:
                 pass
 
-            # Count jpg/jpeg/png files in dataset folder (if present)
+            # Count image files (jpg/jpeg/png) in dataset folder recursively (case-insensitive)
             count = 0
             if os.path.exists(resolved_dataset_dir):
-                for ext in ("*.jpg", "*.jpeg", "*.png"):
-                    count += len(glob.glob(os.path.join(resolved_dataset_dir, ext)))
+                try:
+                    for root, dirs, files in os.walk(resolved_dataset_dir):
+                        for f in files:
+                            ext = os.path.splitext(f)[1].lower()
+                            if ext in (".jpg", ".jpeg", ".png"):
+                                count += 1
+                except Exception:
+                    # Fallback to non-recursive glob if os.walk fails
+                    for ext in ("*.jpg", "*.jpeg", "*.png", "*.JPG", "*.JPEG", "*.PNG"):
+                        count += len(glob.glob(os.path.join(resolved_dataset_dir, ext)))
 
             # Consider trained model existence as readiness, even if dataset images were cleaned up
             model_rel = os.path.join(models_base, f"employee_{user_id}_model.yml")
@@ -313,10 +322,26 @@ class FaceAttendanceApp:
                 pass
             has_model = os.path.exists(model_file)
 
-            exists = (count > 0) or has_model
+            # Exist only by images if include_model is False; otherwise include model presence
+            exists = (count > 0) or (include_model and has_model)
             return exists, count
         except Exception:
             return False, 0
+
+    def _has_model_file(self, user_id) -> bool:
+        """Check if a trained model file exists locally for the user."""
+        try:
+            models_base = getattr(self.face_system, 'models_path', 'models')
+            model_rel = os.path.join(models_base, f"employee_{user_id}_model.yml")
+            model_file = model_rel
+            try:
+                if hasattr(self.face_system, '_resolve_path'):
+                    model_file = self.face_system._resolve_path(model_rel)
+            except Exception:
+                pass
+            return os.path.exists(model_file)
+        except Exception:
+            return False
 
     def _format_dataset_indicator(self, exists, count):
         """Create a clear indicator string and color: 'Ada dataset' or 'Tidak ada dataset'.
@@ -738,8 +763,8 @@ class FaceAttendanceApp:
                     self.users_summary_label.configure(text="Gagal memuat data pengguna dari backend.")
                 return
 
-            with_count = 0
-            without_count = 0
+            with_images = 0
+            without_images = 0
             total = 0
 
             for u in results:
@@ -748,19 +773,20 @@ class FaceAttendanceApp:
                 name = u.get('fullname')
                 role = u.get('role')
                 email = u.get('email')
-                exists, count = self._get_dataset_info(uid)
-                if exists:
-                    with_count += 1
-                    dataset_text = "Ada dataset"
+                # For users list, show both images count and model presence
+                images_exist, count = self._get_dataset_info(uid, include_model=False)
+                model_exist = self._has_model_file(uid)
+                if images_exist:
+                    with_images += 1
                 else:
-                    without_count += 1
-                    dataset_text = "Tidak ada dataset"
+                    without_images += 1
+                dataset_text = f"Gambar: {count} | Model: {'Ya' if model_exist else 'Tidak'}"
 
                 if hasattr(self, 'users_tree'):
                     self.users_tree.insert("", "end", values=(uid, name, role, email, dataset_text))
 
             if hasattr(self, 'users_summary_label'):
-                self.users_summary_label.configure(text=f"Total: {total} | Punya dataset: {with_count} | Belum: {without_count}")
+                self.users_summary_label.configure(text=f"Total: {total} | Gambar ada: {with_images} | Gambar tidak ada: {without_images}")
 
         except Exception as e:
             try:
@@ -786,15 +812,17 @@ class FaceAttendanceApp:
                 self.users_data = {}
                 
                 for user in results:
-                    # Compute local dataset indicator
-                    exists, count = self._get_dataset_info(user.get('user_id'))
-                    prefix = "✔" if exists else "✖"
-                    suffix = " (Ada dataset)" if exists else " (Tidak ada dataset)"
+                    # Compute local dataset indicator (images) and model presence for clarity
+                    images_exist, count = self._get_dataset_info(user.get('user_id'), include_model=False)
+                    model_exist = self._has_model_file(user.get('user_id'))
+                    prefix = "✔" if images_exist else "✖"
+                    suffix = f" (Gambar: {count} | Model: {'Ya' if model_exist else 'Tidak'})"
                     display_name = f"{prefix} {user['fullname']}{suffix} ({user['role']}) - {user['email']}"
                     user_options.append(display_name)
                     user_copy = dict(user)
-                    user_copy['_dataset_exists'] = exists
+                    user_copy['_dataset_exists'] = images_exist
                     user_copy['_dataset_count'] = count
+                    user_copy['_model_exists'] = model_exist
                     self.users_data[display_name] = user_copy
                 
                 self.user_dropdown.configure(values=user_options)
@@ -814,8 +842,13 @@ class FaceAttendanceApp:
             # Update info display
             exists = bool(user.get('_dataset_exists'))
             count = int(user.get('_dataset_count', 0))
+            model_exist = bool(user.get('_model_exists', False))
             status_text, status_color = self._format_dataset_indicator(exists, count)
-            info_text = f"👤 {user['fullname']} (ID: {user['user_id']}) - {user['role']}\nStatus: {status_text}"
+            # Show both images and model presence for accuracy
+            info_text = (
+                f"👤 {user['fullname']} (ID: {user['user_id']}) - {user['role']}\n"
+                f"Status: {status_text} | Model: {'Ya' if model_exist else 'Tidak'}"
+            )
             self.selected_user_info.configure(text=info_text)
             
             # Enable buttons
@@ -840,11 +873,17 @@ class FaceAttendanceApp:
                 return
             u = self.selected_user_data
             # Recompute dataset status from disk
-            exists, count = self._get_dataset_info(u.get('user_id'))
+            # For selected user info, reflect dataset images status (not model)
+            exists, count = self._get_dataset_info(u.get('user_id'), include_model=False)
+            model_exist = self._has_model_file(u.get('user_id'))
             u['_dataset_exists'] = exists
             u['_dataset_count'] = count
+            u['_model_exists'] = model_exist
             status_text, status_color = self._format_dataset_indicator(exists, count)
-            info_text = f"👤 {u['fullname']} (ID: {u['user_id']}) - {u['role']}\nStatus: {status_text}"
+            info_text = (
+                f"👤 {u['fullname']} (ID: {u['user_id']}) - {u['role']}\n"
+                f"Status: {status_text} | Model: {'Ya' if model_exist else 'Tidak'}"
+            )
             self.selected_user_info.configure(text=info_text)
             # Update train button enablement
             self.admin_train_btn.configure(state=("normal" if count > 0 else "disabled"))
@@ -975,8 +1014,11 @@ class FaceAttendanceApp:
                     self.log_message(f"Model untuk {user['fullname']} berhasil dihapus")
                     self.window.after(0, lambda: messagebox.showinfo("Sukses", f"Model {user['fullname']} berhasil dihapus"))
                     self.window.after(0, self.refresh_models_list)
-                    # Dataset files may still exist; refresh dataset indicator
+                    # Refresh all dataset indicators/views
                     self.window.after(0, self.update_selected_user_info_label)
+                    self.window.after(0, self.refresh_users_dataset_list)
+                    self.window.after(0, self.load_users_list)
+                    self.window.after(0, self.update_current_user_dataset_status)
                 else:
                     self.log_message("Gagal menghapus model via backend")
                     self.window.after(0, lambda: messagebox.showerror("Error", "Gagal menghapus model"))
@@ -1019,6 +1061,14 @@ class FaceAttendanceApp:
                     "Semua folder dataset telah berhasil dihapus!\n\n"
                     "Storage telah dibebaskan dan model tetap aman."
                 ))
+                # Ensure all views reflect that dataset images are gone
+                try:
+                    self.window.after(0, self.refresh_users_dataset_list)
+                    self.window.after(0, self.load_users_list)
+                    self.window.after(0, self.update_selected_user_info_label)
+                    self.window.after(0, self.update_current_user_dataset_status)
+                except Exception:
+                    pass
             else:
                 self.log_message("⚠️  Cleanup dataset gagal atau sebagian gagal")
                 self.window.after(0, lambda: messagebox.showwarning(
@@ -1026,6 +1076,14 @@ class FaceAttendanceApp:
                     "Beberapa folder dataset mungkin tidak berhasil dihapus.\n"
                     "Cek log untuk detail lebih lanjut."
                 ))
+                # Still attempt to refresh lists to reflect any partial changes
+                try:
+                    self.window.after(0, self.refresh_users_dataset_list)
+                    self.window.after(0, self.load_users_list)
+                    self.window.after(0, self.update_selected_user_info_label)
+                    self.window.after(0, self.update_current_user_dataset_status)
+                except Exception:
+                    pass
                 
         except Exception as e:
             self.log_message(f"Error during cleanup: {e}")

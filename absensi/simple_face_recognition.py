@@ -330,11 +330,55 @@ class SimpleFaceRecognition:
         except Exception as e:
             print(f"Warning: Could not delete old model file {model_path}: {e}")
             return False
+
+    def _delete_local_model_files_for_employee(self, employee_id) -> bool:
+        """Delete local LBPH model files for the given employee.
+        Returns True if at least one file was removed or no file existed, False on error.
+        """
+        try:
+            import glob
+            removed_any = False
+            # Primary expected filename pattern
+            pattern = os.path.join(self.models_path, f"employee_{employee_id}_model.yml")
+            candidate = self._resolve_path(pattern)
+            try:
+                if os.path.exists(candidate):
+                    os.remove(candidate)
+                    print(f"Deleted local model file: {candidate}")
+                    removed_any = True
+            except Exception as e:
+                print(f"Could not delete model file {candidate}: {e}")
+            # Also delete any variants under models_path matching the employee id
+            try:
+                glob_pattern = os.path.join(self.models_path, f"employee_*_model.yml")
+                for p in glob.glob(glob_pattern):
+                    # Extract id segment
+                    base = os.path.basename(p)
+                    if base.startswith("employee_") and base.endswith("_model.yml"):
+                        eid = base[len("employee_") : -len("_model.yml")]
+                        if str(eid).strip() == str(employee_id).strip():
+                            rp = self._resolve_path(p)
+                            if os.path.exists(rp):
+                                try:
+                                    os.remove(rp)
+                                    print(f"Deleted local model file variant: {rp}")
+                                    removed_any = True
+                                except Exception as e:
+                                    print(f"Could not delete model file variant {rp}: {e}")
+            except Exception as e:
+                print(f"Error scanning for local model variants: {e}")
+            # Consider success if any file removed or none existed
+            return removed_any or (not os.path.exists(candidate))
+        except Exception as e:
+            print(f"Error deleting local model files for {employee_id}: {e}")
+            return False
     
     def cleanup_dataset_folder(self, employee_id):
         """Delete dataset folder for employee after successful model training"""
         try:
-            dataset_folder = os.path.join("datasets", f"employee_{employee_id}")
+            # Use configured dataset base and resolve absolute path
+            dataset_folder_rel = os.path.join(self.dataset_path, f"employee_{employee_id}")
+            dataset_folder = self._resolve_path(dataset_folder_rel)
             
             if os.path.exists(dataset_folder):
                 import shutil
@@ -363,7 +407,8 @@ class SimpleFaceRecognition:
     def cleanup_all_dataset_folders(self):
         """Clean up all dataset folders (useful for maintenance)"""
         try:
-            datasets_dir = "datasets"
+            # Use configured dataset base and resolve absolute path
+            datasets_dir = self._resolve_path(self.dataset_path)
             if not os.path.exists(datasets_dir):
                 print("No datasets directory found")
                 return True
@@ -408,10 +453,12 @@ class SimpleFaceRecognition:
         try:
             # Try backend first
             results = None
+            backend_list_obtained = False
             if backend_api and getattr(backend_api, 'session', None):
                 url = f"{backend_api.base_url}/api/face-training?status=active"
                 resp = backend_api.session.get(url, timeout=10)
                 if resp.status_code == 200:
+                    backend_list_obtained = True
                     data = (resp.json() or {}).get('data')
                     # Normalize into a list of rows
                     if isinstance(data, dict):
@@ -471,41 +518,42 @@ class SimpleFaceRecognition:
                     skipped += 1
                     continue
 
-            # Always scan local models directory for any present models
-            try:
-                import glob
-                pattern = os.path.join(self.models_path, "employee_*_model.yml")
-                for path in glob.glob(pattern):
-                    try:
-                        filename = os.path.basename(path)
-                        # Extract employee_id between employee_ and _model.yml
-                        start = len("employee_")
-                        end = filename.rfind("_model.yml")
-                        if end > start:
-                            eid = filename[start:end]
-                            if eid not in self.known_faces:
-                                # Lookup fullname from users table (optional)
-                                fullname = None
-                                try:
-                                    user_rows = simple_db.execute_query(
-                                        "SELECT fullname FROM users WHERE user_id = %s",
-                                        (eid,)
-                                    )
-                                    fullname = user_rows[0]['fullname'] if user_rows else None
-                                except Exception:
-                                    pass
-                                recognizer = cv2.face.LBPHFaceRecognizer_create()
-                                recognizer.read(path)
-                                self.known_faces[eid] = {
-                                    'name': fullname or eid,
-                                    'recognizer': recognizer
-                                }
-                                loaded += 1
-                    except Exception as e:
-                        print(f"Fallback scan load error for {path}: {e}")
-                        continue
-            except Exception as e:
-                print(f"Fallback scan error: {e}")
+            # Scan local models directory for any present models ONLY when backend list wasn't obtained
+            if not backend_list_obtained:
+                try:
+                    import glob
+                    pattern = os.path.join(self.models_path, "employee_*_model.yml")
+                    for path in glob.glob(pattern):
+                        try:
+                            filename = os.path.basename(path)
+                            # Extract employee_id between employee_ and _model.yml
+                            start = len("employee_")
+                            end = filename.rfind("_model.yml")
+                            if end > start:
+                                eid = filename[start:end]
+                                if eid not in self.known_faces:
+                                    # Lookup fullname from users table (optional)
+                                    fullname = None
+                                    try:
+                                        user_rows = simple_db.execute_query(
+                                            "SELECT fullname FROM users WHERE user_id = %s",
+                                            (eid,)
+                                        )
+                                        fullname = user_rows[0]['fullname'] if user_rows else None
+                                    except Exception:
+                                        pass
+                                    recognizer = cv2.face.LBPHFaceRecognizer_create()
+                                    recognizer.read(path)
+                                    self.known_faces[eid] = {
+                                        'name': fullname or eid,
+                                        'recognizer': recognizer
+                                    }
+                                    loaded += 1
+                        except Exception as e:
+                            print(f"Fallback scan load error for {path}: {e}")
+                            continue
+                except Exception as e:
+                    print(f"Fallback scan error: {e}")
 
             if loaded == 0:
                 print("No face models found (backend/DB/local scan)")
@@ -605,32 +653,41 @@ class SimpleFaceRecognition:
         try:
             # Deactivate in database
             # Prefer backend API to update status
-            result = False
+            backend_status_updated = False
             try:
                 if backend_api and getattr(backend_api, 'session', None):
                     url = f"{backend_api.base_url}/api/face-training/{employee_id}/status"
                     resp = backend_api.session.patch(url, json={'status': 'inactive'}, timeout=10)
-                    result = resp.status_code in (200, 204)
+                    backend_status_updated = resp.status_code in (200, 204)
                 else:
                     if getattr(backend_api, 'backend_only', False):
                         raise RuntimeError('Backend-only mode active; cannot fallback to DB')
                     query = "UPDATE face_training SET status = 'inactive' WHERE employee_id = %s"
-                    result = simple_db.execute_query(query, (employee_id,))
+                    backend_status_updated = simple_db.execute_query(query, (employee_id,))
             except Exception as e:
                 print(f"Backend status update error, fallback DB: {e}")
                 if getattr(backend_api, 'backend_only', False):
-                    return False
+                    # We still attempt to remove local files so models won't reload after restart
+                    pass
                 query = "UPDATE face_training SET status = 'inactive' WHERE employee_id = %s"
-                result = simple_db.execute_query(query, (employee_id,))
+                try:
+                    backend_status_updated = simple_db.execute_query(query, (employee_id,))
+                except Exception as ee:
+                    print(f"DB status update error: {ee}")
+                    backend_status_updated = False
             
-            if result:
-                # Remove from loaded models
-                if employee_id in self.known_faces:
-                    del self.known_faces[employee_id]
-                    
-                print(f"Face model deleted for employee {employee_id}")
+            # Always attempt to delete local model files to prevent reload on app restart
+            local_removed = self._delete_local_model_files_for_employee(employee_id)
+
+            # Remove from in-memory loaded models regardless
+            if employee_id in self.known_faces:
+                del self.known_faces[employee_id]
+
+            if backend_status_updated or local_removed:
+                print(f"Face model deletion processed for employee {employee_id} (backend_updated={backend_status_updated}, local_removed={local_removed})")
                 return True
             else:
+                print(f"Face model deletion failed for employee {employee_id} (backend_updated={backend_status_updated}, local_removed={local_removed})")
                 return False
                 
         except Exception as e:
