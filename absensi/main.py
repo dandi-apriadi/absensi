@@ -1876,6 +1876,11 @@ def main():
     # Create a single root and keep it hidden until login succeeds
     print("[APP] Starting GUI root...")
     root = ctk.CTk()
+    # Hide root to avoid showing an extra blank window behind the login dialog
+    try:
+        root.withdraw()
+    except Exception:
+        pass
 
     app_container = {}
 
