@@ -157,7 +157,7 @@ export const getAllUsers = async (req, res) => {
             const base = user.toJSON();
             console.log('Base user data:', base); // Debug log
             return {
-                id: base.id,
+                id: base.user_id, // use UUID primary key
                 user_id: base.user_id,
                 email: base.email,
                 full_name: base.fullname, // Use fullname from database
@@ -165,6 +165,8 @@ export const getAllUsers = async (req, res) => {
                 status: base.status,
                 phone: base.phone,
                 address: base.address,
+                department: base.department,
+                birth_date: base.birth_date,
                 profile_picture: base.profile_picture,
                 last_login: base.last_login,
                 created_at: base.created_at,
@@ -214,7 +216,8 @@ export const getUserById = async (req, res) => {
 
         const { id } = req.params;
 
-        const user = await getUserWithRoleDetails(parseInt(id));
+        // Find user by user_id (UUID primary key)
+        const user = await Users.findByPk(id); // Don't parseInt, user_id is UUID string
 
         if (!user) {
             return res.status(404).json({
@@ -384,11 +387,11 @@ export const updateUser = async (req, res) => {
             });
         }
 
-        const { id } = req.params;
-        const updateData = req.body;
+    const { id } = req.params;
+    const updateData = { ...req.body };
 
-        // Find user
-        const user = await Users.findByPk(parseInt(id));
+        // Find user by user_id (UUID primary key)
+        const user = await Users.findByPk(id); // Don't parseInt, user_id is UUID string
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -396,12 +399,63 @@ export const updateUser = async (req, res) => {
             });
         }
 
-        // Check if email/user_id is being changed and already exists
+        // Normalize and sanitize payload
+        // - Trim strings
+        // - Convert empty strings to null for optional fields (gender etc.)
+        const trimIfString = (v) => (typeof v === 'string' ? v.trim() : v);
+        Object.keys(updateData).forEach((key) => {
+            updateData[key] = trimIfString(updateData[key]);
+        });
+
+        // Sanitize gender: allow only 'male' | 'female' | null
+        if (Object.prototype.hasOwnProperty.call(updateData, 'gender')) {
+            const g = updateData.gender;
+            if (g === '' || g === undefined) {
+                updateData.gender = null;
+            } else if (typeof g === 'string') {
+                const normalized = g.toLowerCase();
+                if (normalized !== 'male' && normalized !== 'female') {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Gender tidak valid. Gunakan 'male' atau 'female' atau kosongkan."
+                    });
+                }
+                updateData.gender = normalized;
+            }
+        }
+
+        // Sanitize status
+        if (Object.prototype.hasOwnProperty.call(updateData, 'status')) {
+            const s = updateData.status;
+            if (s == null || s === '') {
+                delete updateData.status; // ignore empty
+            } else if (!['active', 'inactive', 'suspended'].includes(s)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Status tidak valid. Gunakan 'active' | 'inactive' | 'suspended'"
+                });
+            }
+        }
+
+        // Normalize birth_date empty to null
+        if (Object.prototype.hasOwnProperty.call(updateData, 'birth_date')) {
+            if (updateData.birth_date === '' || updateData.birth_date === undefined) {
+                updateData.birth_date = null;
+            }
+        }
+
+        // Map full_name -> fullname (DB column)
+        if (Object.prototype.hasOwnProperty.call(updateData, 'full_name')) {
+            updateData.fullname = updateData.full_name;
+            delete updateData.full_name;
+        }
+
+        // Check if email is being changed and already exists
         if (updateData.email && updateData.email !== user.email) {
             const existingUser = await Users.findOne({
                 where: {
                     email: updateData.email,
-                    id: { [db.Sequelize.Op.ne]: parseInt(id) }
+                    user_id: { [db.Sequelize.Op.ne]: id }
                 }
             });
             if (existingUser) {
@@ -412,18 +466,17 @@ export const updateUser = async (req, res) => {
             }
         }
 
-        if (updateData.user_id && updateData.user_id !== user.user_id) {
-            const existingUser = await Users.findOne({
-                where: {
-                    user_id: updateData.user_id,
-                    id: { [db.Sequelize.Op.ne]: parseInt(id) }
-                }
-            });
-            if (existingUser) {
-                return res.status(409).json({
-                    success: false,
-                    message: "User ID sudah digunakan"
-                });
+    // Don't allow changing user_id (it's the primary key)
+        delete updateData.user_id;
+
+        // Validate role only if provided (model enum: 'super-admin' | 'student')
+        if (Object.prototype.hasOwnProperty.call(updateData, 'role')) {
+            const r = updateData.role;
+            if (r == null || r === '') {
+                delete updateData.role; // ignore empty role
+            } else if (!['super-admin', 'student'].includes(r)) {
+                // Ignore invalid role to avoid update failure (alternative: return 400)
+                delete updateData.role;
             }
         }
 
@@ -432,32 +485,53 @@ export const updateUser = async (req, res) => {
             updateData.password = await argon2.hash(updateData.password);
         }
 
-        // Update user
-        await user.update(updateData);
+        // Whitelist fields to prevent unknown attribute updates
+        const cleanUpdate = {};
+    if (Object.prototype.hasOwnProperty.call(updateData, 'fullname')) cleanUpdate.fullname = updateData.fullname;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'email')) cleanUpdate.email = updateData.email;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'gender')) cleanUpdate.gender = updateData.gender;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'role')) cleanUpdate.role = updateData.role;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'status')) cleanUpdate.status = updateData.status;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'student_id')) cleanUpdate.student_id = updateData.student_id;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'phone')) cleanUpdate.phone = updateData.phone;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'address')) cleanUpdate.address = updateData.address;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'department')) cleanUpdate.department = updateData.department;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'birth_date')) cleanUpdate.birth_date = updateData.birth_date;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'profile_picture')) cleanUpdate.profile_picture = updateData.profile_picture;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'last_login')) cleanUpdate.last_login = updateData.last_login;
+    if (Object.prototype.hasOwnProperty.call(updateData, 'password')) cleanUpdate.password = updateData.password;
 
-        // Update role-specific details if provided
-        if (user.role === 'student' && updateData.studentDetail) {
-            const student = await Students.findOne({ where: { user_id: user.id } });
+        // Update user with clean fields only
+        await user.update(cleanUpdate);
+
+        // Update role-specific details if provided (guard undefined models and use user.user_id)
+        if (user.role === 'student' && updateData.studentDetail && typeof Students !== 'undefined') {
+            const student = await Students.findOne({ where: { user_id: user.user_id } });
             if (student) {
                 await student.update(updateData.studentDetail);
             }
-        }
-        else if (user.role === 'lecturer' && updateData.lecturerDetail) {
-            const lecturer = await Lecturers.findOne({ where: { user_id: user.id } });
+        } else if (user.role === 'lecturer' && updateData.lecturerDetail && typeof Lecturers !== 'undefined') {
+            const lecturer = await Lecturers.findOne({ where: { user_id: user.user_id } });
             if (lecturer) {
                 await lecturer.update(updateData.lecturerDetail);
             }
-        }
-        else if (user.role === 'super-admin' && updateData.superAdminDetail) {
-            const superAdmin = await SuperAdmins.findOne({ where: { user_id: user.id } });
+        } else if (user.role === 'super-admin' && updateData.superAdminDetail && typeof SuperAdmins !== 'undefined') {
+            const superAdmin = await SuperAdmins.findOne({ where: { user_id: user.user_id } });
             if (superAdmin) {
                 await superAdmin.update(updateData.superAdminDetail);
             }
         }
 
-        // Get updated user data
-        const updatedUser = await getUserWithRoleDetails(parseInt(id));
-        const { password, ...userData } = updatedUser.toJSON();
+        // Get updated user data directly by primary key (UUID); exclude password
+        const updatedUser = await Users.findByPk(id, { attributes: { exclude: ['password'] } });
+        if (!updatedUser) {
+            return res.status(200).json({
+                success: true,
+                message: "User berhasil diperbarui",
+                data: { user: null }
+            });
+        }
+        const userData = updatedUser.toJSON();
 
         res.status(200).json({
             success: true,
@@ -492,15 +566,15 @@ export const deleteUser = async (req, res) => {
         const { id } = req.params;
 
         // Check if trying to delete self
-        if (parseInt(id) === req.session.userId) {
+        if (id === req.session.user_id) {
             return res.status(400).json({
                 success: false,
                 message: "Tidak dapat menghapus akun sendiri"
             });
         }
 
-        // Find user
-        const user = await Users.findByPk(parseInt(id));
+        // Find user by user_id (UUID primary key)
+        const user = await Users.findByPk(id); // Don't parseInt, user_id is UUID string
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -550,15 +624,15 @@ export const updateUserStatus = async (req, res) => {
         }
 
         // Check if trying to suspend self
-        if (parseInt(id) === req.session.userId && status === 'suspended') {
+        if (id === req.session.user_id && status === 'suspended') {
             return res.status(400).json({
                 success: false,
                 message: "Tidak dapat menangguhkan akun sendiri"
             });
         }
 
-        // Find user
-        const user = await Users.findByPk(parseInt(id));
+        // Find user by user_id (UUID primary key)
+        const user = await Users.findByPk(id); // Don't parseInt, user_id is UUID string
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -574,7 +648,6 @@ export const updateUserStatus = async (req, res) => {
             message: `Status user berhasil diubah menjadi ${status}`,
             data: {
                 user: {
-                    id: user.id,
                     user_id: user.user_id,
                     full_name: user.fullname, // Use fullname from database
                     status: user.status

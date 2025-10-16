@@ -8,6 +8,7 @@ except ImportError:
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+from typing import Optional
 
 load_dotenv()
 
@@ -143,7 +144,7 @@ class BackendAPI:
                         pass
         return { 'ok': False, 'status': None, 'url': None, 'error': 'all_probes_failed' }
 
-    def get_users(self, status: str | None = None, limit: int = 1000, page: int = 1):
+    def get_users(self, status: Optional[str] = None, limit: int = 1000, page: int = 1):
         """Fetch users list from backend admin endpoint.
         Returns list of dicts with keys: user_id, fullname, role, email, status (if available)
         """
@@ -188,14 +189,23 @@ class BackendAPI:
         """
         if date is None:
             date = datetime.now().strftime('%Y-%m-%d')
+        
+        print(f"[BACKEND API] check_user_room_access called for user_id={user_id}, date={date}")
+        
         # Prefer backend endpoint when available
         if REQUESTS_AVAILABLE and self.session is not None:
             try:
                 url = f"{self.base_url}/api/attendance/check-access"
                 payload = { 'user_id': user_id, 'date': date }
+                print(f"[BACKEND API] Calling {url} with payload: {payload}")
+                
                 resp = self.session.post(url, json=payload, timeout=10)
+                print(f"[BACKEND API] Response status: {resp.status_code}")
+                
                 if resp.status_code == 200:
                     body = resp.json() or {}
+                    print(f"[BACKEND API] Response body: {body}")
+                    
                     data = body.get('data') or {}
                     # Ensure shape similar to fallback for callers
                     allowed = bool((data or {}).get('allowed'))
@@ -206,20 +216,26 @@ class BackendAPI:
                         'start_time': c.get('start_time'),
                         'end_time': c.get('end_time')
                     } for c in classes]
-                    return {
+                    
+                    result = {
                         'allowed': allowed,
                         'classes': classes,
                         'sessions': sessions,
                         'reason': (data or {}).get('reason')
                     }
+                    print(f"[BACKEND API] Returning: {result}")
+                    return result
                 else:
                     print(f"[BACKEND API] check-access HTTP error: {resp.status_code} {resp.text}")
             except Exception as e:
                 print(f"[BACKEND API] check-access request error: {e}")
+                import traceback
+                traceback.print_exc()
 
         # Fallback to direct DB if backend unavailable
         if self.backend_only:
             print(f"[BACKEND API] Backend-only mode active; skipping DB fallback for check access of user {user_id}")
+            print(f"[BACKEND API] HINT: Check if backend server is running and endpoint /api/attendance/check-access is working")
             return None
         print(f"[BACKEND API] Using database fallback for user {user_id} on {date}")
         return self._check_access_fallback(user_id, date)
@@ -743,7 +759,7 @@ class BackendAPI:
             return self._log_access_fallback(user_id, access_type, access_status, 
                                            confidence_score, reason, session_id)
 
-    def get_today_attendances(self, date_str: str | None = None):
+    def get_today_attendances(self, date_str: Optional[str] = None):
         """Fetch today's attendance records via backend for display in UI."""
         if not REQUESTS_AVAILABLE or self.session is None:
             print("[BACKEND API] Requests not available; cannot fetch attendances via HTTP")

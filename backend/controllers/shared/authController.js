@@ -55,11 +55,13 @@ export const login = async (req, res) => {
         req.session.userId = user.user_id;
         req.session.userRole = user.role;
 
-        console.log('Session after login:', {
-            id: req.session.id,
-            user_id: req.session.user_id,
-            role: req.session.role
-        });
+        console.log('=== LOGIN SESSION DETAILS ===');
+        console.log('Session ID:', req.session.id);
+        console.log('Session user_id:', req.session.user_id);
+        console.log('Session role:', req.session.role);
+        console.log('Cookie settings:', req.session.cookie);
+        console.log('Full session:', req.session);
+        console.log('==============================');
 
         // Prepare simplified response data
         const userData = {
@@ -75,12 +77,15 @@ export const login = async (req, res) => {
         // Ensure session is saved before responding
         req.session.save((saveErr) => {
             if (saveErr) {
-                console.error('Session save error:', saveErr);
+                console.error('❌ Session save error:', saveErr);
                 return res.status(500).json({
                     success: false,
                     message: "Gagal menyimpan sesi"
                 });
             }
+
+            console.log('✅ Session saved successfully');
+            console.log('Response cookie header will be set');
 
             res.status(200).json({
                 success: true,

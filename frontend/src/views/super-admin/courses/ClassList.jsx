@@ -23,7 +23,11 @@ import {
   MdWarning
 } from 'react-icons/md';
 
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5001";
+// Use the same env pattern as other views/services
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL ||
+  (typeof window !== 'undefined' && window._env_?.REACT_APP_API_BASE_URL) ||
+  'http://localhost:5000';
 
 const ClassList = () => {
   const navigate = useNavigate();

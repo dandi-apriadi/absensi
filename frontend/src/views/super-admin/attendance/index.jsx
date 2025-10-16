@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { MdAccessTime, MdPerson, MdCheck, MdClose, MdWarning, MdCalendarToday, MdSearch, MdFilterList } from "react-icons/md";
 import AOS from "aos";
 import "aos/dist/aos.css";
+import attendanceService from "services/attendanceService";
 
 const AttendanceManagement = () => {
     useEffect(() => {
@@ -13,18 +14,40 @@ const AttendanceManagement = () => {
 
     const [searchTerm, setSearchTerm] = useState("");
     const [filterStatus, setFilterStatus] = useState("all");
+    const [attendanceData, setAttendanceData] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
 
-    // Dummy data for attendance
-    const attendanceData = [
-        { id: 1, name: "Ahmad Fauzi", nim: "1901234", class: "Pemrograman Web", date: "2023-05-15", time: "08:05", status: "present" },
-        { id: 2, name: "Siti Nuraini", nim: "1901235", class: "Pemrograman Web", date: "2023-05-15", time: "07:55", status: "present" },
-        { id: 3, name: "Budi Santoso", nim: "1901236", class: "Pemrograman Web", date: "2023-05-15", time: "08:30", status: "late" },
-        { id: 4, name: "Dewi Anggraini", nim: "1901237", class: "Pemrograman Web", date: "2023-05-15", time: "-", status: "absent" },
-        { id: 5, name: "Eko Prasetyo", nim: "1901238", class: "Pemrograman Web", date: "2023-05-15", time: "08:02", status: "present" },
-        { id: 6, name: "Fitriani", nim: "1901239", class: "Pemrograman Web", date: "2023-05-15", time: "08:25", status: "late" },
-        { id: 7, name: "Gunawan", nim: "1901240", class: "Pemrograman Web", date: "2023-05-15", time: "-", status: "absent" },
-        { id: 8, name: "Hani Permata", nim: "1901241", class: "Pemrograman Web", date: "2023-05-15", time: "07:58", status: "present" },
-    ];
+    const fetchTodayAttendances = async () => {
+        try {
+            setLoading(true);
+            setError(null);
+            const res = await attendanceService.getTodayAttendances();
+            const rows = res?.data || [];
+            // Map to UI shape
+            const mapped = rows.map((r, idx) => ({
+                id: idx + 1,
+                name: r.fullname || '-',
+                nim: r.student_id || '-',
+                time: r.check_in_time ? new Date(r.check_in_time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
+                status: r.status || 'present'
+            }));
+            setAttendanceData(mapped);
+        } catch (e) {
+            console.error('Failed to load today attendances', e);
+            setError(e.response?.data?.message || e.message || 'Gagal memuat data absensi hari ini');
+            setAttendanceData([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchTodayAttendances();
+        // Optional: auto refresh every minute
+        const t = setInterval(fetchTodayAttendances, 60_000);
+        return () => clearInterval(t);
+    }, []);
 
     // Stats calculation
     const presentCount = attendanceData.filter(item => item.status === "present").length;
@@ -137,7 +160,7 @@ const AttendanceManagement = () => {
                 <div className="flex flex-col md:flex-row justify-between items-center mb-6">
                     <div className="flex items-center mb-4 md:mb-0">
                         <MdCalendarToday className="mr-2 text-blue-500" />
-                        <span className="font-medium">Pemrograman Web - 15 Mei 2023</span>
+                        <span className="font-medium">Daftar Absensi Hari Ini</span>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-4">
                         <div className="relative">
@@ -163,6 +186,11 @@ const AttendanceManagement = () => {
                             </select>
                             <MdFilterList className="absolute left-3 top-2.5 text-gray-400" />
                         </div>
+                        <button
+                            onClick={fetchTodayAttendances}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                            disabled={loading}
+                        >{loading ? 'Memuat...' : 'Refresh'}</button>
                     </div>
                 </div>
 
@@ -178,7 +206,15 @@ const AttendanceManagement = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {filteredData.length > 0 ? (
+                            {loading ? (
+                                <tr>
+                                    <td colSpan="4" className="px-6 py-8 text-center text-gray-500">Memuat data absensi...</td>
+                                </tr>
+                            ) : error ? (
+                                <tr>
+                                    <td colSpan="4" className="px-6 py-8 text-center text-red-600">{error}</td>
+                                </tr>
+                            ) : filteredData.length > 0 ? (
                                 filteredData.map((student, index) => (
                                     <tr key={student.id}
                                         className="hover:bg-gray-50"
@@ -205,19 +241,7 @@ const AttendanceManagement = () => {
                 </div>
             </div>
 
-            {/* Additional Info Card */}
-            <div
-                className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl shadow-md p-6 flex items-center justify-between"
-                data-aos="fade-up"
-            >
-                <div>
-                    <h3 className="text-xl font-bold mb-2">Perlu bantuan?</h3>
-                    <p className="opacity-80">Kontak administrator sistem untuk informasi lebih lanjut tentang sistem absensi.</p>
-                </div>
-                <button className="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-50 transition-colors">
-                    Hubungi Admin
-                </button>
-            </div>
+            
         </div>
     );
 };

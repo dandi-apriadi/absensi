@@ -724,8 +724,8 @@ export const recordAttendanceSmart = async (req, res) => {
 export const getTodayAttendances = async (req, res) => {
     try {
         const date = req.query.date || new Date().toISOString().slice(0, 10);
-        const [rows] = await db.query(`
-            SELECT u.fullname, sa.check_in_time, sa.status
+        const rows = await db.query(`
+            SELECT u.student_id, u.fullname, sa.check_in_time, sa.status
             FROM student_attendances sa
             JOIN users u ON sa.student_id = u.user_id
             WHERE DATE(sa.check_in_time) = :date
@@ -835,7 +835,7 @@ export const checkUserRoomAccess = async (req, res) => {
         console.log(`Current time: ${currentTime}`);
         console.log(`Check date: ${checkDate}`);
         
-        const classesResult = await db.query(`
+    const classesResult = await db.query(`
             SELECT 
                 cc.id as class_id,
                 cc.class_name,
@@ -844,19 +844,19 @@ export const checkUserRoomAccess = async (req, res) => {
                 c.course_code
             FROM course_classes cc
             JOIN courses c ON cc.course_id = c.id
-            JOIN student_enrollments se ON cc.id = se.class_id
-            WHERE se.student_id = :user_id 
-            AND cc.status = 'active'
-            AND se.status = 'enrolled'
+            LEFT JOIN student_enrollments se 
+                ON cc.id = se.class_id 
+                AND se.status = 'enrolled' 
+                AND se.student_id = :user_id
+            WHERE cc.status = 'active'
+              AND (se.student_id IS NOT NULL OR cc.lecturer_id = :user_id)
         `, {
-            replacements: { 
-                user_id: user_id
-            },
+            replacements: { user_id },
             type: db.QueryTypes.SELECT
         });
 
         // Ensure we have an array of classes; sequelize QueryTypes.SELECT returns an array
-        const classes = Array.isArray(classesResult) ? classesResult : (classesResult ? [classesResult] : []);
+    const classes = Array.isArray(classesResult) ? classesResult : (classesResult ? [classesResult] : []);
 
         console.log(`Found ${classes.length} enrolled classes for user ${user_id}`);
         
@@ -878,6 +878,32 @@ export const checkUserRoomAccess = async (req, res) => {
         };
 
         const ensureArray = (v) => Array.isArray(v) ? v : (v ? [v] : []);
+
+        // Parse time string to minutes since midnight; supports '8:00', '08:00', '08:00:00', '8.00'
+        const timeToMinutes = (val) => {
+            if (val === undefined || val === null) return null;
+            try {
+                let s = String(val).trim();
+                if (!s) return null;
+                s = s.replace('.', ':'); // e.g., '8.00' -> '8:00'
+                // Keep only HH:MM from HH:MM:SS
+                if (s.includes(':')) {
+                    const parts = s.split(':');
+                    const h = parts[0];
+                    const m = parts[1] ?? '00';
+                    const hh = parseInt(h, 10);
+                    const mm = parseInt(m, 10);
+                    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+                    return hh * 60 + mm;
+                }
+                // If only hour '8' -> '8:00'
+                const hh = parseInt(s, 10);
+                if (Number.isNaN(hh)) return null;
+                return hh * 60;
+            } catch {
+                return null;
+            }
+        };
 
         const parseScheduleSlots = (raw) => {
             try {
@@ -924,7 +950,8 @@ export const checkUserRoomAccess = async (req, res) => {
                     // Skip invalid slot (e.g., primitives from malformed input)
                     continue;
                 }
-                const slotDayNorm = normalizeDay(slot.day);
+                const dayValue = slot.day ?? slot.day_name ?? slot.hari ?? slot.Day ?? slot.dayOfWeek ?? slot.dow;
+                const slotDayNorm = normalizeDay(dayValue);
                 const dayMatch = slotDayNorm === currentDayIndonesian;
                 console.log(`Checking slot:`, slot);
                 console.log(`Day match: ${slotDayNorm} === ${currentDayIndonesian} = ${dayMatch}`);
@@ -932,15 +959,18 @@ export const checkUserRoomAccess = async (req, res) => {
                 if (!dayMatch) continue;
 
                 // Support alternative keys
-                const startTime = slot.start_time || slot.start || slot.startAt || slot.start_at;
-                const endTime = slot.end_time || slot.end || slot.endAt || slot.end_at;
-                if (!startTime || !endTime) {
+                const startTime = slot.start_time || slot.start || slot.startAt || slot.start_at || slot.mulai || slot.jam_mulai;
+                const endTime = slot.end_time || slot.end || slot.endAt || slot.end_at || slot.selesai || slot.jam_selesai;
+                const startMinutes = timeToMinutes(startTime);
+                const endMinutes = timeToMinutes(endTime);
+                if (startMinutes === null || endMinutes === null) {
                     console.warn('Skipping slot with missing time range:', slot);
                     continue;
                 }
 
-                console.log(`Checking time: ${currentTime} between ${startTime} - ${endTime}`);
-                if (currentTime >= String(startTime).slice(0,5) && currentTime <= String(endTime).slice(0,5)) {
+                const nowMinutes = timeToMinutes(currentTime);
+                console.log(`Checking time: now=${currentTime}(${nowMinutes}) between ${startTime}(${startMinutes}) - ${endTime}(${endMinutes})`);
+                if (nowMinutes !== null && nowMinutes >= startMinutes && nowMinutes <= endMinutes) {
                     console.log(`✅ ACCESS GRANTED! Time ${currentTime} is within ${startTime}-${endTime}`);
                     hasAccess = true;
                     accessInfo.push({
@@ -949,8 +979,8 @@ export const checkUserRoomAccess = async (req, res) => {
                         course_name: cls.course_name,
                         course_code: cls.course_code,
                         schedule_day: slotDayNorm,
-                        start_time: String(startTime).slice(0,5),
-                        end_time: String(endTime).slice(0,5)
+                        start_time: startTime,
+                        end_time: endTime
                     });
                 } else {
                     console.log(`❌ Time ${currentTime} is NOT within ${startTime}-${endTime}`);

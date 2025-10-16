@@ -67,30 +67,36 @@ const frontendHost = (() => { try { return new URL(FRONTEND_URL).host; } catch {
 const backendHost = (() => { try { return new URL(BACKEND_URL).host; } catch { return ''; } })();
 const inferredCrossSite = frontendHost && backendHost && frontendHost !== backendHost;
 const crossSite = inferredCrossSite || (process.env.CROSS_SITE_COOKIES || 'false').toLowerCase() === 'true';
-let sameSite = (process.env.SESSION_SAMESITE || (crossSite ? 'none' : 'lax')).toLowerCase();
-if (!['lax', 'strict', 'none'].includes(sameSite)) sameSite = 'lax';
-// Determine cookie secure flag; prefer 'auto' so it follows req.secure
-// Allow explicit override via SESSION_COOKIE_SECURE
-const envSecure = (process.env.SESSION_COOKIE_SECURE || '').toLowerCase();
-let cookieSecure = 'auto';
-if (envSecure === 'false') cookieSecure = false;
-if (envSecure === 'true') cookieSecure = true;
 
-// Derive cookie domain if not provided: use eTLD+1 (e.g., siabsensi.site) to cover apex and www
-let cookieDomain = process.env.COOKIE_DOMAIN || undefined;
-if (!cookieDomain) {
-    const hostname = backendHost?.split(':')[0] || '';
-    const isIp = /^\d+\.\d+\.\d+\.\d+$/.test(hostname);
-    const isLocalhost = hostname === 'localhost';
-    if (hostname && !isIp && !isLocalhost) {
-        const parts = hostname.split('.');
-        if (parts.length >= 2) {
-            cookieDomain = `.${parts.slice(-2).join('.')}`;
-        }
-    }
+// Simplified session configuration for development
+let sameSite = 'lax';
+let cookieSecure = false;
+let cookieDomain = undefined;
+
+// Override with environment variables if set
+if (process.env.SESSION_SAMESITE) {
+    sameSite = process.env.SESSION_SAMESITE.toLowerCase();
+    if (!['lax', 'strict', 'none'].includes(sameSite)) sameSite = 'lax';
 }
 
-console.log('Session cookie config:', { sameSite, cookieSecure, cookieDomain, FRONTEND_URL, BACKEND_URL });
+const envSecure = (process.env.SESSION_COOKIE_SECURE || '').toLowerCase();
+if (envSecure === 'false') cookieSecure = false;
+else if (envSecure === 'true') cookieSecure = true;
+else cookieSecure = isProd; // Default: secure in production only
+
+if (process.env.COOKIE_DOMAIN) {
+    cookieDomain = process.env.COOKIE_DOMAIN;
+}
+
+console.log('Session cookie config:', { 
+    sameSite, 
+    cookieSecure, 
+    cookieDomain, 
+    FRONTEND_URL, 
+    BACKEND_URL,
+    isProd,
+    crossSite 
+});
 
 app.use(
     session({
@@ -98,9 +104,10 @@ app.use(
         resave: false,
         saveUninitialized: false,
         store: store,
-        proxy: true, // honor X-Forwarded-* when setting secure cookies
+        proxy: TRUST_PROXY_ENV !== 'false', // honor X-Forwarded-* when setting secure cookies
+        name: 'iot.session.id', // Custom session cookie name
         cookie: {
-            secure: cookieSecure, // 'auto' follows req.secure; can be overridden below
+            secure: cookieSecure,
             httpOnly: true,
             sameSite: sameSite,
             domain: cookieDomain,
@@ -109,26 +116,13 @@ app.use(
     })
 );
 
-// Per-request cookie tuner: if proxy headers are missing but this is same-origin, relax to SameSite=Lax + non-secure
+// Simplified per-request cookie tuner for development
 app.use((req, res, next) => {
     try {
-        const requestHost = (req.headers.host || '').toLowerCase().split(':')[0];
-        const isXfpHttps = (req.headers['x-forwarded-proto'] || '').toString().toLowerCase() === 'https';
-        const sameOriginAsFrontend = requestHost && frontendHost && requestHost === frontendHost.split(':')[0];
-
-        if (req.session && req.session.cookie) {
-            // Enforce cross-site requirements: SameSite=None + Secure
-            if (!sameOriginAsFrontend || sameSite === 'none' || crossSite) {
-                req.session.cookie.sameSite = 'none';
-                req.session.cookie.secure = true;
-            } else {
-                // Same-origin: ensure cookie can be issued even if req.secure is false (proxy headers missing)
-                req.session.cookie.sameSite = 'lax';
-                if (!req.secure && !isXfpHttps && envSecure !== 'true') {
-                    // Only relax if not explicitly forced secure by env
-                    req.session.cookie.secure = false;
-                }
-            }
+        // For local development without HTTPS, ensure cookies work
+        if (!isProd && req.session && req.session.cookie) {
+            req.session.cookie.secure = cookieSecure;
+            req.session.cookie.sameSite = sameSite;
         }
     } catch (e) {
         console.warn('Cookie tuner warning:', e?.message);

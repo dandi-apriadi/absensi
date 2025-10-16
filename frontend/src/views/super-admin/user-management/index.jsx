@@ -6,13 +6,10 @@ import {
     MdFilterList,
     MdEdit,
     MdDelete,
-    MdVisibility,
-    MdMoreVert,
     MdSchool,
     MdPersonOutline,
     MdEmail,
     MdPhone,
-    MdDateRange,
     MdCheckCircle,
     MdCancel
 } from "react-icons/md";
@@ -35,13 +32,14 @@ const UserManagement = () => {
     const [filterStatus, setFilterStatus] = useState("all");
     const [currentPage, setCurrentPage] = useState(1);
     const [usersPerPage, setUsersPerPage] = useState(6);
-    const [showDropdown, setShowDropdown] = useState(null);
     const [users, setUsers] = useState([]);
     const [totalPages, setTotalPages] = useState(1);
     const [totalItems, setTotalItems] = useState(0);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [creating, setCreating] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editUser, setEditUser] = useState(null);
     const [newUser, setNewUser] = useState({ 
         full_name: '', 
         email: '', 
@@ -75,15 +73,18 @@ const UserManagement = () => {
             const mapped = (data.users || []).map((u, index) => {
                 console.log(`Processing user ${index + 1}:`, u); // Debug log
                 console.log('Available fields:', Object.keys(u)); // Debug log
-                console.log('fullname field:', u.fullname); // Debug log
-                console.log('full_name field:', u.full_name); // Debug log
-                console.log('name field:', u.name); // Debug log
+                console.log('id field:', u.id); // Debug log
+                console.log('user_id field:', u.user_id); // Debug log
                 
                 const userName = u.full_name || u.fullname || u.name || 'Nama tidak tersedia';
+                // user_id is the primary key (UUID), use it as id
+                const primaryId = u.user_id; // Backend uses user_id as primary key
+                
                 console.log('Final userName:', userName); // Debug log
+                console.log('Final primaryId:', primaryId); // Debug log
                 
                 return {
-                    id: u.id,
+                    id: primaryId, // Use user_id as primary identifier for API calls
                     user_id: u.user_id || '-',
                     name: userName,
                     email: u.email || '-',
@@ -134,10 +135,6 @@ const UserManagement = () => {
 
     const filteredUsers = users; // sudah difilter dari backend
     const currentUsers = users; // backend sudah memberi data halaman saat ini
-
-    const handleDropdownToggle = (userId) => {
-        setShowDropdown(showDropdown === userId ? null : userId);
-    };
 
     const getRoleColor = (role) => {
         switch(role) {
@@ -198,7 +195,8 @@ const UserManagement = () => {
                 user_id: newUser.user_id || 'USR' + Date.now(),
                 email: newUser.email,
                 password: newUser.password || 'Password123!',
-                full_name: newUser.full_name,
+                // Backend expects 'fullname'
+                fullname: newUser.full_name,
                 phone: newUser.phone,
                 role: newUser.role, // send as is since backend expects 'student', 'lecturer', 'super-admin'
                 status: newUser.status,
@@ -229,19 +227,52 @@ const UserManagement = () => {
     const handleDelete = async (id) => {
         const confirm = await Swal.fire({
             title: 'Hapus User?',
-            text: 'Tindakan ini tidak dapat dibatalkan',
+            text: 'Tindakan ini tidak dapat dibatalkan. Data user akan dihapus permanen.',
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonText: 'Ya, hapus',
-            cancelButtonText: 'Batal'
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: '<i class="fas fa-trash"></i> Ya, Hapus!',
+            cancelButtonText: '<i class="fas fa-times"></i> Batal',
+            reverseButtons: true,
+            customClass: {
+                confirmButton: 'px-6 py-2 rounded-lg',
+                cancelButton: 'px-6 py-2 rounded-lg'
+            }
         });
+        
         if (!confirm.isConfirmed) return;
+        
+        // Show loading indicator
+        Swal.fire({
+            title: 'Menghapus...',
+            text: 'Mohon tunggu sebentar',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+        
         try {
             await apiDeleteUser(id);
             await loadUsers();
-            Swal.fire('Dihapus', 'User berhasil dihapus', 'success');
+            Swal.fire({
+                icon: 'success',
+                title: 'Berhasil Dihapus!',
+                text: 'User berhasil dihapus dari sistem',
+                showConfirmButton: false,
+                timer: 2000
+            });
         } catch (e) {
-            Swal.fire('Error', e.response?.data?.message || 'Gagal menghapus user', 'error');
+            console.error('Error deleting user:', e);
+            Swal.fire({
+                icon: 'error',
+                title: 'Gagal Menghapus',
+                text: e.response?.data?.message || 'Terjadi kesalahan saat menghapus user',
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#3085d6'
+            });
         }
     };
 
@@ -250,8 +281,120 @@ const UserManagement = () => {
         try {
             await apiUpdateUserStatus(user.id, newStatus);
             await loadUsers();
+            Swal.fire({
+                icon: 'success',
+                title: 'Status Diperbarui!',
+                text: `Status user berhasil diubah menjadi ${newStatus === 'active' ? 'aktif' : 'tidak aktif'}`,
+                showConfirmButton: false,
+                timer: 2000
+            });
         } catch (e) {
-            Swal.fire('Error', 'Gagal mengubah status', 'error');
+            console.error('Error updating status:', e);
+            Swal.fire({
+                icon: 'error',
+                title: 'Gagal Mengubah Status',
+                text: e.response?.data?.message || 'Terjadi kesalahan saat mengubah status',
+                confirmButtonText: 'OK'
+            });
+        }
+    };
+
+    const handleEditUser = (user) => {
+        console.log('=== EDIT USER CLICKED ===');
+        console.log('User object:', user);
+        console.log('User ID:', user.id);
+        console.log('User user_id:', user.user_id);
+        console.log('========================');
+        
+        if (!user.id) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'ID user tidak ditemukan. Silakan refresh halaman dan coba lagi.',
+                confirmButtonText: 'OK'
+            });
+            return;
+        }
+        
+        setEditUser({
+            id: user.id,
+            full_name: user.name,
+            email: user.email,
+            user_id: user.user_id,
+            phone: user.phone !== '-' ? user.phone : '',
+            role: user.role,
+            status: user.status,
+            department: user.department !== '-' ? user.department : '',
+            gender: user.gender !== '-' ? user.gender : '',
+            address: user.address !== '-' ? user.address : '',
+            birth_date: user.birth_date !== '-' ? user.birth_date : ''
+        });
+        setShowEditModal(true);
+    };
+
+    const handleUpdateUser = async () => {
+        if (!editUser) return;
+        
+        console.log('=== UPDATE USER ===');
+        console.log('editUser object:', editUser);
+        console.log('editUser.id:', editUser.id);
+        console.log('==================');
+        
+        if (!editUser.id) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'ID user tidak valid. Silakan tutup modal dan coba lagi.',
+                confirmButtonText: 'OK'
+            });
+            return;
+        }
+        
+        try {
+            const nullIfEmpty = (v) => (typeof v === 'string' ? (v.trim() === '' ? null : v.trim()) : v);
+            const normalizeGender = (g) => {
+                if (!g) return null;
+                const val = (g || '').toString().toLowerCase();
+                if (val === 'laki-laki' || val === 'male') return 'male';
+                if (val === 'perempuan' || val === 'female') return 'female';
+                return null; // fallback to null for invalid values
+            };
+            const payload = {
+                full_name: nullIfEmpty(editUser.full_name),
+                email: nullIfEmpty(editUser.email),
+                user_id: editUser.user_id, // will be ignored by backend for safety
+                phone: nullIfEmpty(editUser.phone),
+                role: editUser.role,
+                status: editUser.status,
+                department: nullIfEmpty(editUser.department),
+                gender: normalizeGender(editUser.gender),
+                address: nullIfEmpty(editUser.address),
+                birth_date: nullIfEmpty(editUser.birth_date)
+            };
+            
+            console.log('Calling apiUpdateUser with ID:', editUser.id);
+            console.log('Payload:', payload);
+            
+            await apiUpdateUser(editUser.id, payload);
+            await loadUsers();
+            setShowEditModal(false);
+            setEditUser(null);
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'Berhasil Diperbarui!',
+                text: 'Data user berhasil diperbarui',
+                showConfirmButton: false,
+                timer: 2000
+            });
+        } catch (e) {
+            console.error('Error updating user:', e);
+            Swal.fire({
+                icon: 'error',
+                title: 'Gagal Memperbarui',
+                text: e.response?.data?.message || 'Terjadi kesalahan saat memperbarui data',
+                confirmButtonText: 'OK'
+            });
         }
     };
 
@@ -399,21 +542,15 @@ const UserManagement = () => {
                                 <th className="px-4 py-4 text-left">Role</th>
                                 <th className="px-4 py-4 text-left">Status</th>
                                 <th className="px-4 py-4 text-left">Dept/Prodi</th>
-                                <th className="px-4 py-4 text-left">
-                                    <div className="flex items-center gap-2">
-                                        <MdDateRange className="w-4 h-4" />
-                                        Login Terakhir
-                                    </div>
-                                </th>
                                 <th className="px-4 py-4 text-left">Aksi</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {loading && (
-                                <tr><td colSpan={10} className="px-4 py-6 text-center text-gray-500">Memuat data...</td></tr>
+                                <tr><td colSpan={9} className="px-4 py-6 text-center text-gray-500">Memuat data...</td></tr>
                             )}
                             {!loading && currentUsers.length === 0 && (
-                                <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-500">Tidak ada data pengguna</td></tr>
+                                <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-500">Tidak ada data pengguna</td></tr>
                             )}
                             {!loading && currentUsers.map((user, idx) => (
                                 <tr key={user.id} className="hover:bg-gray-50">
@@ -472,32 +609,24 @@ const UserManagement = () => {
                                             }
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 align-top text-gray-600 text-xs">
-                                        <div className="text-xs">
-                                            {user.lastLogin === '-' ? 
-                                                <span className="text-gray-400 italic">Belum pernah login</span> : 
-                                                user.lastLogin
-                                            }
-                                        </div>
-                                    </td>
                                     <td className="px-4 py-3 align-top">
-                                        <div className="relative">
-                                            <button onClick={() => handleDropdownToggle(user.id)} className="p-2 hover:bg-gray-100 rounded-lg">
-                                                <MdMoreVert className="w-4 h-4 text-gray-600" />
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <button 
+                                                onClick={() => handleEditUser(user)}
+                                                className="flex items-center gap-1 px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-600 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 text-xs font-medium"
+                                                title="Edit Data"
+                                            >
+                                                <MdEdit className="w-4 h-4" />
+                                                <span className="hidden sm:inline">Edit</span>
                                             </button>
-                                            {showDropdown === user.id && (
-                                                <div className="absolute z-20 right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg">
-                                                    <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 hover:bg-gray-50 text-xs">
-                                                        <MdVisibility className="w-4 h-4 text-blue-600" /> Detail
-                                                    </button>
-                                                    <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 hover:bg-gray-50 text-xs">
-                                                        <MdEdit className="w-4 h-4 text-green-600" /> Edit
-                                                    </button>
-                                                    <button onClick={() => handleDelete(user.id)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 hover:bg-gray-50 text-xs rounded-b-lg">
-                                                        <MdDelete className="w-4 h-4 text-red-600" /> Hapus
-                                                    </button>
-                                                </div>
-                                            )}
+                                            <button 
+                                                onClick={() => handleDelete(user.id)} 
+                                                className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 text-xs font-medium"
+                                                title="Hapus User"
+                                            >
+                                                <MdDelete className="w-4 h-4" />
+                                                <span className="hidden sm:inline">Hapus</span>
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -554,6 +683,146 @@ const UserManagement = () => {
                     <MdPeople className="h-20 w-20 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-xl font-semibold text-gray-600 mb-2">Tidak ada data pengguna</h3>
                     <p className="text-gray-500">Coba ubah filter pencarian atau tambah pengguna baru</p>
+                </div>
+            )}
+
+            {/* Edit Modal */}
+            {showEditModal && editUser && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowEditModal(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div className="bg-gradient-to-r from-green-600 to-green-700 p-6 rounded-t-2xl">
+                            <div className="flex items-center justify-between text-white">
+                                <h2 className="text-2xl font-bold">Edit Pengguna</h2>
+                                <button onClick={() => setShowEditModal(false)} className="hover:bg-white/20 p-2 rounded-lg transition-colors">
+                                    <MdCancel className="w-6 h-6" />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Nama Lengkap *</label>
+                                    <input 
+                                        type="text"
+                                        value={editUser.full_name}
+                                        onChange={(e) => setEditUser({...editUser, full_name: e.target.value})}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                        placeholder="Masukkan nama lengkap"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">User ID (NIM/NIP) *</label>
+                                    <input 
+                                        type="text"
+                                        value={editUser.user_id}
+                                        readOnly
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-gray-100 text-gray-600 cursor-not-allowed"
+                                        placeholder="User ID tidak dapat diubah"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Email *</label>
+                                    <input 
+                                        type="email"
+                                        value={editUser.email}
+                                        onChange={(e) => setEditUser({...editUser, email: e.target.value})}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                        placeholder="Masukkan email"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">No. Telepon</label>
+                                    <input 
+                                        type="text"
+                                        value={editUser.phone}
+                                        onChange={(e) => setEditUser({...editUser, phone: e.target.value})}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                        placeholder="Masukkan nomor telepon"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Role *</label>
+                                    <select 
+                                        value={editUser.role}
+                                        onChange={(e) => setEditUser({...editUser, role: e.target.value})}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                    >
+                                        <option value="student">Mahasiswa</option>
+                                        <option value="lecturer">Dosen</option>
+                                        <option value="super-admin">Super Admin</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Status *</label>
+                                    <select 
+                                        value={editUser.status}
+                                        onChange={(e) => setEditUser({...editUser, status: e.target.value})}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                    >
+                                        <option value="active">Aktif</option>
+                                        <option value="inactive">Tidak Aktif</option>
+                                        <option value="suspended">Suspended</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Departemen/Prodi</label>
+                                    <input 
+                                        type="text"
+                                        value={editUser.department}
+                                        onChange={(e) => setEditUser({...editUser, department: e.target.value})}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                        placeholder="Masukkan departemen/prodi"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Jenis Kelamin</label>
+                                    <select 
+                                        value={editUser.gender}
+                                        onChange={(e) => setEditUser({...editUser, gender: e.target.value})}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                    >
+                                        <option value="">Pilih jenis kelamin</option>
+                                        <option value="male">Laki-laki</option>
+                                        <option value="female">Perempuan</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Tanggal Lahir</label>
+                                    <input 
+                                        type="date"
+                                        value={editUser.birth_date}
+                                        onChange={(e) => setEditUser({...editUser, birth_date: e.target.value})}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Alamat</label>
+                                    <textarea 
+                                        value={editUser.address}
+                                        onChange={(e) => setEditUser({...editUser, address: e.target.value})}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                        placeholder="Masukkan alamat lengkap"
+                                        rows="3"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="mt-6 pt-6 border-t border-gray-200 flex gap-3">
+                                <button 
+                                    onClick={() => setShowEditModal(false)}
+                                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-3 rounded-xl font-semibold transition-all duration-300"
+                                >
+                                    Batal
+                                </button>
+                                <button 
+                                    onClick={handleUpdateUser}
+                                    className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105"
+                                >
+                                    Simpan Perubahan
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

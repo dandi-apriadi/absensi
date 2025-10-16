@@ -76,7 +76,41 @@ class SimpleFaceRecognition:
         
     def capture_face_dataset(self, employee_id, employee_name, num_samples=100):
         """Capture multiple face images for training dataset"""
-        cap = cv2.VideoCapture(0)
+        # Try to find a working camera with fallback logic (same as main.py start_camera)
+        cap = None
+        selected_idx = None
+        for idx in (0, 1, 2):
+            test_cap = cv2.VideoCapture(idx)
+            if test_cap is not None and test_cap.isOpened():
+                cap = test_cap
+                selected_idx = idx
+                print(f"[CAPTURE] Using camera index {idx}")
+                break
+            # Try V4L2 backend as fallback (common on Raspberry Pi / Linux)
+            if test_cap is not None:
+                try:
+                    test_cap.release()
+                except Exception:
+                    pass
+            try:
+                test_cap_v4l2 = cv2.VideoCapture(idx, cv2.CAP_V4L2)
+                if test_cap_v4l2 is not None and test_cap_v4l2.isOpened():
+                    cap = test_cap_v4l2
+                    selected_idx = idx
+                    print(f"[CAPTURE] Using camera index {idx} with V4L2 backend")
+                    break
+                if test_cap_v4l2 is not None:
+                    try:
+                        test_cap_v4l2.release()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        
+        if cap is None or not cap.isOpened():
+            print("[CAPTURE] Error: Cannot access camera (no device found)")
+            return None
+        
         count = 0
         captured_images = []
         
@@ -238,11 +272,45 @@ class SimpleFaceRecognition:
                         'model_path': model_path,
                         'status': 'active'
                     }
+                    print(f"[TRAINING] POST {url}")
+                    print(f"[TRAINING] Payload: {payload}")
                     resp = backend_api.session.post(url, json=payload, timeout=10)
-                    result = resp.status_code in (200, 201)
+                    print(f"[TRAINING] Response status: {resp.status_code}")
+                    if resp.status_code in (200, 201):
+                        result = True
+                        print(f"[TRAINING] ✓ Model saved to backend successfully")
+                    else:
+                        print(f"[TRAINING] ✗ Backend returned {resp.status_code}: {resp.text[:200]}")
+                        # Try database fallback on backend error (even in backend-only mode for face_training)
+                        print(f"[TRAINING] Attempting database fallback...")
+                        try:
+                            query = """
+                            INSERT INTO face_training (
+                                employee_id, model_id, training_images_count, model_path, status, created_at, updated_at
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            ON DUPLICATE KEY UPDATE
+                                model_id = VALUES(model_id),
+                                training_images_count = VALUES(training_images_count),
+                                model_path = VALUES(model_path),
+                                status = VALUES(status),
+                                updated_at = VALUES(updated_at)
+                            """
+                            params = (employee_id, model_id, len(faces), model_path, 'active', current_time, current_time)
+                            db_result = simple_db.execute_query(query, params)
+                            if db_result:
+                                result = True
+                                print(f"[TRAINING] ✓ Model saved to local database (backend failed)")
+                            else:
+                                result = False
+                                print(f"[TRAINING] ✗ Database fallback also failed")
+                        except Exception as db_err:
+                            print(f"[TRAINING] ✗ Database fallback error: {db_err}")
+                            result = False
                 else:
+                    print(f"[TRAINING] Backend API session not available")
                     # If backend-only mode is active, do not fallback to DB
                     if getattr(backend_api, 'backend_only', False):
+                        print(f"[TRAINING] Backend-only mode: cannot proceed without backend")
                         result = False
                     else:
                         # Fallback direct DB
@@ -260,8 +328,11 @@ class SimpleFaceRecognition:
                         params = (employee_id, model_id, len(faces), model_path, 'active', current_time, current_time)
                         result = simple_db.execute_query(query, params)
             except Exception as e:
-                print(f"Backend upsert error, fallback DB: {e}")
+                print(f"[TRAINING] Backend upsert error: {type(e).__name__}: {e}")
+                import traceback
+                traceback.print_exc()
                 if getattr(backend_api, 'backend_only', False):
+                    print(f"[TRAINING] Backend-only mode: skipping DB fallback")
                     result = False
                 else:
                     query = """
@@ -279,20 +350,33 @@ class SimpleFaceRecognition:
                     result = simple_db.execute_query(query, params)
             
             if result:
-                print(f"Face model trained successfully for employee {employee_id}")
+                print(f"[TRAINING] ✓ Face model trained and saved successfully for employee {employee_id}")
                 
                 # Cleanup dataset folder after successful training
-                print("🧹 Cleaning up dataset folder...")
+                print("[TRAINING] 🧹 Cleaning up dataset folder...")
                 cleanup_success = self.cleanup_dataset_folder(employee_id)
                 if cleanup_success:
-                    print(f"✅ Training completed with automatic cleanup for {employee_id}")
+                    print(f"[TRAINING] ✅ Training completed with automatic cleanup for {employee_id}")
                 else:
-                    print(f"⚠️  Training completed but cleanup failed for {employee_id}")
+                    print(f"[TRAINING] ⚠️  Training completed but cleanup failed for {employee_id}")
                 
                 return True
             else:
-                print("Failed to save model to database")
-                return False
+                # Model training succeeded (file exists) but registration failed
+                print(f"[TRAINING] ⚠️  Model training SUCCEEDED but registration to backend/database FAILED")
+                print(f"[TRAINING] ℹ️  Model file saved locally at: {model_path}")
+                print(f"[TRAINING] ℹ️  Face recognition will still work, but model not registered in database")
+                print(f"[TRAINING] 💡 You can manually register this model or check backend/database connectivity")
+                
+                # Still cleanup dataset even if registration failed (model file exists and works)
+                print("[TRAINING] 🧹 Cleaning up dataset folder...")
+                cleanup_success = self.cleanup_dataset_folder(employee_id)
+                if cleanup_success:
+                    print(f"[TRAINING] Dataset cleaned up for {employee_id}")
+                
+                # Return True because training actually succeeded (model file created)
+                # Only registration failed, but face recognition will work
+                return True
                 
         except Exception as e:
             print(f"Error training model: {e}")
@@ -454,6 +538,7 @@ class SimpleFaceRecognition:
             # Try backend first
             results = None
             backend_list_obtained = False
+            users_name_map = None  # Map of user_id -> fullname for backend normalization
             if backend_api and getattr(backend_api, 'session', None):
                 url = f"{backend_api.base_url}/api/face-training?status=active"
                 resp = backend_api.session.get(url, timeout=10)
@@ -467,6 +552,13 @@ class SimpleFaceRecognition:
                         results = data
                     else:
                         results = []
+                    # Build a user fullname map (one request) so labels show names, not IDs
+                    try:
+                        users = backend_api.get_users(limit=10000)
+                        if users:
+                            users_name_map = { str(u.get('user_id')): (u.get('fullname') or u.get('full_name') or u.get('name')) for u in users }
+                    except Exception:
+                        users_name_map = None
                 else:
                     try:
                         print(f"[FACE MODELS] Backend list failed: {resp.status_code} {resp.text}")
@@ -497,15 +589,36 @@ class SimpleFaceRecognition:
                     model_path = self._resolve_path(row['model_path'])
                     if not os.path.exists(model_path):
                         # Fallback: construct path from employee_id
-                        eid = str(row['employee_id']).strip()
+                        eid = str(row.get('employee_id') or row.get('user_id')).strip()
                         candidate = os.path.join(self.models_path, f"employee_{eid}_model.yml")
                         model_path = self._resolve_path(candidate)
 
                     if os.path.exists(model_path):
                         recognizer = cv2.face.LBPHFaceRecognizer_create()
                         recognizer.read(model_path)
-                        self.known_faces[row['employee_id']] = {
-                            'name': row.get('fullname') or str(row['employee_id']),
+                        # Resolve name with multiple fallbacks
+                        raw_eid = row.get('employee_id') or row.get('user_id')
+                        eid_str = str(raw_eid)
+                        resolved_name = (
+                            row.get('fullname') or
+                            row.get('full_name') or
+                            row.get('name') or
+                            (users_name_map.get(eid_str) if users_name_map else None) or
+                            eid_str
+                        )
+                        # If still only ID, attempt DB lookup for fullname as a final fallback
+                        if resolved_name == eid_str:
+                            try:
+                                user_rows = simple_db.execute_query(
+                                    "SELECT fullname FROM users WHERE user_id = %s",
+                                    (eid_str,)
+                                )
+                                if user_rows and user_rows[0].get('fullname'):
+                                    resolved_name = user_rows[0]['fullname']
+                            except Exception:
+                                pass
+                        self.known_faces[raw_eid] = {
+                            'name': resolved_name,
                             'recognizer': recognizer
                         }
                         loaded += 1

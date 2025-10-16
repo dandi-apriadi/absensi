@@ -33,11 +33,15 @@ class RelayController:
     Note: RPi.GPIO and gpiozero modules are only available on Raspberry Pi.
     This class automatically falls back to simulation mode on other platforms.
     Pylance warnings for missing modules are expected during development.
+    
+    Security Feature: Relay is LOCKED (LOW) by default and only opens during successful attendance.
     """
     def __init__(self, relay_pin=18, led_pin=24, buzzer_pin=23):
         """Initialize controller.
         Defaults previously used relay_pin=18. Fingerprint reference (relay.txt) uses pin 17 and 5s unlock.
         Allow overriding via environment variables RELAY_PIN / RELAY_DEFAULT_DURATION.
+        
+        IMPORTANT: Relay starts in LOCKED state (GPIO.LOW) for security.
         """
         import os
         # Prefer environment variable if provided, else keep backward compatible default argument.
@@ -57,20 +61,25 @@ class RelayController:
         self.led_pin = led_pin
         self.buzzer_pin = buzzer_pin
         self.gpio_initialized = False
+        self.door_locked = True  # Track door lock state for security
         
         # Initialize GPIO if available
         if GPIO_AVAILABLE:
             self.init_gpio()
+        else:
+            # Even in simulation mode, ensure door starts locked
+            print("[RELAY] SIMULATION MODE: Door initialized in LOCKED state")
         
     def init_gpio(self):
-        """Initialize GPIO pins"""
+        """Initialize GPIO pins - Relay starts LOCKED for security"""
         try:
             GPIO.setmode(GPIO.BCM)
             GPIO.setwarnings(False)
             
-            # Setup relay pin
+            # Setup relay pin - START IN LOCKED STATE (LOW)
             GPIO.setup(self.relay_pin, GPIO.OUT)
-            GPIO.output(self.relay_pin, GPIO.LOW)  # Default OFF
+            GPIO.output(self.relay_pin, GPIO.LOW)  # LOCKED by default - SECURITY FEATURE
+            self.door_locked = True
             
             # Setup LED indicator (optional)
             GPIO.setup(self.led_pin, GPIO.OUT)
@@ -81,7 +90,8 @@ class RelayController:
             GPIO.output(self.buzzer_pin, GPIO.LOW)
             
             self.gpio_initialized = True
-            print("[RELAY] GPIO initialized successfully")
+            print(f"[RELAY] GPIO initialized successfully on pin {self.relay_pin}")
+            print(f"[RELAY] 🔒 Door LOCKED (Security feature: door locked by default)")
             
         except Exception as e:
             print(f"[RELAY] GPIO initialization failed: {e}")
@@ -90,9 +100,13 @@ class RelayController:
     def activate_door_relay(self, duration=3, callback=None):
         """
         Activate door relay for specified duration
+        This is the ONLY function that unlocks the door - called during successful attendance
+        
         Args:
-            duration: seconds to keep door open
+            duration: seconds to keep door open (default 5 seconds for consistency with fingerprint system)
             callback: function to call when door closes
+        
+        Security: Door automatically locks after duration expires
         """
         # If user wants default from fingerprint script (5 seconds), allow env override
         import os
@@ -111,16 +125,17 @@ class RelayController:
         if self.gpio_initialized:
             # Real GPIO control
             try:
-                print(f"[RELAY] Activating door relay for {duration} seconds")
+                print(f"[RELAY] 🔓 UNLOCKING door relay for {duration} seconds (successful attendance)")
                 
-                # Turn on relay and LED
+                # Turn on relay and LED - UNLOCK DOOR
                 GPIO.output(self.relay_pin, GPIO.HIGH)
                 GPIO.output(self.led_pin, GPIO.HIGH)
+                self.door_locked = False
                 
                 # Success beep
                 self.beep_success()
                 
-                # Schedule relay deactivation
+                # Schedule relay deactivation - AUTO LOCK after duration
                 timer = threading.Timer(duration, self._deactivate_relay)
                 timer.daemon = True
                 timer.start()
@@ -134,27 +149,56 @@ class RelayController:
                 
             except Exception as e:
                 print(f"[RELAY] Error activating relay: {e}")
+                # Ensure door stays locked on error
+                self._ensure_locked()
                 return False
         else:
             # Simulation mode
-            print(f"[RELAY] SIMULATION: Door relay activated for {duration} seconds")
-            if callback:
-                timer = threading.Timer(duration, callback)
-                timer.daemon = True
-                timer.start()
+            print(f"[RELAY] SIMULATION: 🔓 Door relay UNLOCKED for {duration} seconds (successful attendance)")
+            self.door_locked = False
+            
+            # Auto-lock simulation
+            def sim_lock():
+                self.door_locked = True
+                print("[RELAY] SIMULATION: 🔒 Door relay auto-LOCKED")
+                if callback:
+                    callback()
+                    
+            timer = threading.Timer(duration, sim_lock)
+            timer.daemon = True
+            timer.start()
             return True
     
     def _deactivate_relay(self):
-        """Internal method to deactivate relay"""
+        """Internal method to deactivate relay - AUTO LOCK for security"""
         if self.gpio_initialized:
             try:
                 GPIO.output(self.relay_pin, GPIO.LOW)
                 GPIO.output(self.led_pin, GPIO.LOW)
-                print("[RELAY] Door relay deactivated")
+                self.door_locked = True
+                print("[RELAY] 🔒 Door relay LOCKED (auto-lock after timeout)")
             except Exception as e:
                 print(f"[RELAY] Error deactivating relay: {e}")
+                # Force lock state even if GPIO fails
+                self._ensure_locked()
         else:
-            print("[RELAY] SIMULATION: Door relay deactivated")
+            self.door_locked = True
+            print("[RELAY] SIMULATION: 🔒 Door relay LOCKED (auto-lock)")
+    
+    def _ensure_locked(self):
+        """Emergency function to ensure door is locked"""
+        if self.gpio_initialized:
+            try:
+                GPIO.output(self.relay_pin, GPIO.LOW)
+                GPIO.output(self.led_pin, GPIO.LOW)
+                self.door_locked = True
+                print("[RELAY] 🔒 Emergency LOCK activated")
+            except:
+                pass
+    
+    def get_door_status(self):
+        """Get current door lock status"""
+        return "LOCKED" if self.door_locked else "UNLOCKED"
     
     def beep_success(self, duration=0.2):
         """Beep to indicate successful access"""
@@ -179,20 +223,28 @@ class RelayController:
                 pass
     
     def cleanup(self):
-        """Cleanup GPIO resources"""
+        """Cleanup GPIO resources - ENSURE DOOR IS LOCKED"""
         if self.gpio_initialized:
             try:
+                # IMPORTANT: Lock door before cleanup for security
+                GPIO.output(self.relay_pin, GPIO.LOW)
+                GPIO.output(self.led_pin, GPIO.LOW)
+                GPIO.output(self.buzzer_pin, GPIO.LOW)
+                self.door_locked = True
+                print("[RELAY] 🔒 Door LOCKED before GPIO cleanup (security)")
                 GPIO.cleanup()
                 print("[RELAY] GPIO cleanup completed")
-            except:
-                pass
+            except Exception as e:
+                print(f"[RELAY] Cleanup error: {e}")
+        else:
+            print("[RELAY] SIMULATION: Cleanup - door LOCKED")
 
 # Global relay controller instance
 relay_controller = RelayController()
 
 # Convenience functions
 def activate_door(duration=3, callback=None):
-    """Activate door relay"""
+    """Activate door relay - ONLY called during successful attendance"""
     return relay_controller.activate_door_relay(duration, callback)
 
 def success_beep():
@@ -204,5 +256,13 @@ def denied_beep():
     relay_controller.beep_denied()
 
 def cleanup_gpio():
-    """Cleanup GPIO on exit"""
+    """Cleanup GPIO on exit - ENSURES DOOR IS LOCKED"""
     relay_controller.cleanup()
+
+def get_door_status():
+    """Get current door status"""
+    return relay_controller.get_door_status()
+
+def ensure_door_locked():
+    """Force door to locked state - emergency function"""
+    relay_controller._ensure_locked()

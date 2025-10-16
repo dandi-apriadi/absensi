@@ -24,6 +24,12 @@ const User = db.define('users', {
         allowNull: false,
         defaultValue: 'student'
     },
+    // Account status
+    status: {
+        type: DataTypes.ENUM('active', 'inactive', 'suspended'),
+        allowNull: false,
+        defaultValue: 'active'
+    },
     gender: {
         type: DataTypes.ENUM('male', 'female'),
         allowNull: true,
@@ -39,9 +45,33 @@ const User = db.define('users', {
             isEmail: true
         }
     },
+    phone: {
+        type: DataTypes.STRING(50),
+        allowNull: true
+    },
     password: {
         type: DataTypes.STRING,
         allowNull: false
+    },
+    address: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    department: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+    },
+    birth_date: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+    },
+    profile_picture: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    last_login: {
+        type: DataTypes.DATE,
+        allowNull: true
     },
     // Student specific fields
     student_id: {
