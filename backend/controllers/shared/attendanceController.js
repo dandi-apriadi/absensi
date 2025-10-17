@@ -17,6 +17,172 @@ import { SYSTEM_CONFIG } from "../../config/systemSettings.js";
 // ATTENDANCE MANAGEMENT CONTROLLERS
 // ===============================================
 
+// ===============================================
+// INTERNAL DEBUGGING UTILITIES
+// ===============================================
+/**
+ * Print all available schedules for a user's enrolled/owned classes to console,
+ * highlighting the ones active at the current time (TZ aware).
+ * This is helpful to diagnose why access is allowed/denied when recording attendance.
+ */
+async function debugLogAvailableSchedules(user_id, dateOpt = null) {
+    try {
+        const tz = SYSTEM_CONFIG?.APPLICATION?.TIMEZONE || 'Asia/Jakarta';
+        const nowTz = momentTz.tz(new Date(), tz);
+        let dayMoment = nowTz;
+        if (dateOpt) {
+            let parsed = momentTz.tz(dateOpt, tz);
+            if (!parsed.isValid()) {
+                parsed = momentTz.tz(dateOpt, ['YYYY-MM-DD', 'YYYY-MM-DD HH:mm', 'YYYY-MM-DDTHH:mm'], tz);
+            }
+            if (parsed?.isValid?.() && parsed.isValid()) {
+                dayMoment = parsed;
+            }
+        }
+        const currentDayEN = dayMoment.format('dddd');
+        const currentTime = nowTz.format('HH:mm');
+        const dayMapping = {
+            'Monday': 'Senin',
+            'Tuesday': 'Selasa',
+            'Wednesday': 'Rabu',
+            'Thursday': 'Kamis',
+            'Friday': 'Jumat',
+            'Saturday': 'Sabtu',
+            'Sunday': 'Minggu'
+        };
+        const currentDayID = dayMapping[currentDayEN] || currentDayEN;
+
+        const normalizeDay = (val) => {
+            if (!val && val !== 0) return undefined;
+            const mapEN = { monday:'Senin', tuesday:'Selasa', wednesday:'Rabu', thursday:'Kamis', friday:'Jumat', saturday:'Sabtu', sunday:'Minggu' };
+            const mapID = { senin:'Senin', selasa:'Selasa', rabu:'Rabu', kamis:'Kamis', jumat:'Jumat', jumaat:'Jumat', sabtu:'Sabtu', minggu:'Minggu' };
+            const mapNum1 = { '1':'Senin','2':'Selasa','3':'Rabu','4':'Kamis','5':'Jumat','6':'Sabtu','7':'Minggu' };
+            const mapNum0 = { '0':'Minggu','1':'Senin','2':'Selasa','3':'Rabu','4':'Kamis','5':'Jumat','6':'Sabtu' };
+            let s = String(val).trim().toLowerCase();
+            s = s.replace(/[’'`]/g, "");
+            s = s.replace(/\s+/g, "");
+            if (mapID[s]) return mapID[s];
+            if (mapEN[s]) return mapEN[s];
+            if (mapNum1[s] !== undefined) return mapNum1[s];
+            if (mapNum0[s] !== undefined) return mapNum0[s];
+            const title = s.charAt(0).toUpperCase() + s.slice(1);
+            if (['JumAt','Jumaat'].includes(title)) return 'Jumat';
+            return undefined;
+        };
+
+        const timeToMinutes = (val) => {
+            if (val === undefined || val === null) return null;
+            try {
+                let s = String(val).trim();
+                if (!s) return null;
+                s = s.replace('.', ':');
+                if (s.includes(':')) {
+                    const parts = s.split(':');
+                    const h = parseInt(parts[0], 10);
+                    const m = parseInt(parts[1] ?? '00', 10);
+                    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+                    return h * 60 + m;
+                }
+                const hh = parseInt(s, 10);
+                if (Number.isNaN(hh)) return null;
+                return hh * 60;
+            } catch {
+                return null;
+            }
+        };
+
+        const parseScheduleSlots = (raw) => {
+            try {
+                if (!raw && raw !== 0) return [];
+                let val = raw;
+                if (typeof val === 'string') {
+                    const trimmed = val.trim();
+                    try {
+                        val = JSON.parse(trimmed);
+                        if (typeof val === 'string') val = JSON.parse(val);
+                    } catch (e) {
+                        return [];
+                    }
+                }
+                if (Array.isArray(val)) return val.filter(x => typeof x === 'object' && x);
+                if (typeof val === 'object' && val) return [val];
+                return [];
+            } catch {
+                return [];
+            }
+        };
+
+        // Resolve alt student identifier
+        let altStudentId = null;
+        try {
+            const u = await Users.findOne({ where: { user_id } });
+            altStudentId = u?.student_id || null;
+        } catch {}
+
+        const classes = await db.query(`
+            SELECT 
+                cc.id as class_id,
+                cc.class_name,
+                cc.schedule,
+                c.course_name,
+                c.course_code
+            FROM course_classes cc
+            LEFT JOIN courses c ON cc.course_id = c.id
+            LEFT JOIN student_enrollments se 
+                ON cc.id = se.class_id 
+                AND (
+                    CONVERT(se.student_id USING utf8mb4) COLLATE utf8mb4_general_ci IN (
+                        CONVERT(:user_id USING utf8mb4) COLLATE utf8mb4_general_ci,
+                        CONVERT(:alt_student_id USING utf8mb4) COLLATE utf8mb4_general_ci
+                    )
+                )
+                AND (
+                    se.status IN ('enrolled','active','registered','ongoing','completed')
+                    OR se.status IS NULL
+                )
+            WHERE (cc.status IS NULL OR cc.status <> 'cancelled')
+              AND (se.student_id IS NOT NULL OR cc.lecturer_id = :user_id)
+        `, {
+            replacements: { user_id, alt_student_id: altStudentId || user_id },
+            type: db.QueryTypes.SELECT
+        });
+
+        console.log('=== SCHEDULE SNAPSHOT ===');
+        console.log(`User: ${user_id}`);
+        console.log(`Current day/time: ${currentDayEN} (${currentDayID}) ${currentTime} [${tz}]`);
+        console.log(`Enrolled/owned classes found: ${classes.length}`);
+
+        const nowMin = timeToMinutes(currentTime);
+        for (const cls of classes) {
+            const slots = parseScheduleSlots(cls.schedule);
+            console.log(`- ${cls.class_name} | ${cls.course_code} ${cls.course_name} -> ${slots.length} slots`);
+            for (const slot of slots) {
+                if (!slot || typeof slot !== 'object') continue;
+                const dayValue = slot.day ?? slot.day_name ?? slot.hari ?? slot.Day ?? slot.dayOfWeek ?? slot.day_of_week ?? slot.dow;
+                const dayNorm = normalizeDay(dayValue) || String(dayValue);
+                let startTime = slot.start_time || slot.start || slot.startAt || slot.start_at || slot.mulai || slot.jam_mulai;
+                let endTime = slot.end_time || slot.end || slot.endAt || slot.end_at || slot.selesai || slot.jam_selesai;
+                const timeRange = slot.time || slot.waktu || slot.jam;
+                if ((!startTime || !endTime) && typeof timeRange === 'string' && timeRange.trim()) {
+                    const cleaned = timeRange.replace(/\./g, ':');
+                    const parts = cleaned.split(/\s*[-–—]\s*/);
+                    if (parts.length === 2) {
+                        startTime = startTime || parts[0];
+                        endTime = endTime || parts[1];
+                    }
+                }
+                const sMin = timeToMinutes(startTime);
+                const eMin = timeToMinutes(endTime);
+                const active = (dayNorm === currentDayID) && (nowMin !== null && sMin !== null && eMin !== null && nowMin >= sMin && nowMin <= eMin);
+                console.log(`   • ${dayNorm} ${startTime || '-'} - ${endTime || '-'} ${active ? '<< ACTIVE NOW' : ''}`);
+            }
+        }
+        console.log('=== END SCHEDULE SNAPSHOT ===');
+    } catch (e) {
+        console.warn('debugLogAvailableSchedules failed:', e?.message || e);
+    }
+}
+
 /**
  * Create attendance session (Lecturer only)
  */
@@ -368,6 +534,9 @@ export const recordAttendance = async (req, res) => {
             verification_status: recordedByRole === 'lecturer' ? 'verified' : 'pending'
         });
 
+        // Debug: print available schedules snapshot for console diagnostics
+        try { await debugLogAvailableSchedules(student.user_id || student.id || student_id); } catch {}
+
         res.status(201).json({
             success: true,
             message: "Kehadiran berhasil dicatat",
@@ -462,6 +631,9 @@ export const recordAttendanceByFace = async (req, res) => {
             face_recognition_log_id: faceLog.id,
             verification_status: 'auto_verified'
         });
+
+        // Debug: print available schedules snapshot for console diagnostics
+        try { await debugLogAvailableSchedules(student.user_id || recognized_user_id || student.id); } catch {}
 
         res.status(201).json({
             success: true,
@@ -704,6 +876,9 @@ export const recordAttendanceSmart = async (req, res) => {
             confidence_score: confidence_score ?? 0.95
         });
 
+        // Debug: print available schedules snapshot for console diagnostics
+        try { await debugLogAvailableSchedules(user_id); } catch {}
+
         return res.status(201).json({
             success: true,
             message: 'Absensi berhasil dicatat',
@@ -797,7 +972,7 @@ export const checkUserRoomAccess = async (req, res) => {
         console.log('=== DEBUG: checkUserRoomAccess called ===');
         console.log('Request body:', req.body);
         
-        const { user_id, date } = req.body;
+    const { user_id, date } = req.body;
 
         // Validation
         if (!user_id) {
@@ -811,23 +986,28 @@ export const checkUserRoomAccess = async (req, res) => {
         const checkDate = date || new Date().toISOString().split('T')[0];
         console.log('Check date:', checkDate);
 
-        // Determine timezone-aware current time/day
-        const tz = SYSTEM_CONFIG?.APPLICATION?.TIMEZONE || 'Asia/Jakarta';
-        // If client passes an ISO-like date/time, honor it; else use now in configured TZ
-        let now = momentTz.tz(tz);
-        if (date) {
-            const parsed = momentTz.tz(date, [
-                momentTz.ISO_8601,
-                'YYYY-MM-DD',
-                'YYYY-MM-DD HH:mm',
-                'YYYY-MM-DDTHH:mm'
-            ], tz, true);
-            if (parsed?.isValid?.() && parsed.isValid()) {
-                now = parsed.tz(tz);
+            // Determine timezone-aware current time/day
+            const tz = SYSTEM_CONFIG?.APPLICATION?.TIMEZONE || 'Asia/Jakarta';
+            const nowTz = momentTz.tz(new Date(), tz);
+            // If client passes date-only, use its day but keep current time-of-day
+            let dayMoment = nowTz;
+            // If date includes time (e.g., 'YYYY-MM-DD HH:mm'), use that time-of-day too
+            let timeOverride = null;
+            if (date) {
+                let parsed = momentTz.tz(date, tz);
+                if (!parsed.isValid()) {
+                    parsed = momentTz.tz(date, ['YYYY-MM-DD', 'YYYY-MM-DD HH:mm', 'YYYY-MM-DDTHH:mm'], tz);
+                }
+                if (parsed?.isValid?.() && parsed.isValid()) {
+                    dayMoment = parsed;
+                    // When time info exists in provided date, override current time-of-day
+                    if (/[T\s]\d{2}:\d{2}/.test(String(date))) {
+                        timeOverride = parsed.format('HH:mm');
+                    }
+                }
             }
-        }
-        const currentDay = now.format('dddd'); // English day name
-        const currentTime = now.format('HH:mm'); // HH:MM 24h
+            const currentDay = dayMoment.format('dddd'); // English day name by requested date or today
+            const currentTime = timeOverride || nowTz.format('HH:mm'); // Use provided time if present, else current time
         
         // Create day mapping
         const dayMapping = {
@@ -849,7 +1029,16 @@ export const checkUserRoomAccess = async (req, res) => {
         console.log(`Current time: ${currentTime}`);
         console.log(`Check date: ${checkDate}`);
         
-        const classesResult = await db.query(`
+            // Resolve alternate student identifier (e.g., NIM) so enrollment match works even if DB stores student_id instead of user_id
+            let altStudentId = null;
+            try {
+                const u = await Users.findOne({ where: { user_id } });
+                altStudentId = u?.student_id || null;
+            } catch (e) {
+                altStudentId = null;
+            }
+            console.log('Resolved alternate student identifier (student_id/NIM):', altStudentId);
+            const classesResult = await db.query(`
             SELECT 
                 cc.id as class_id,
                 cc.class_name,
@@ -857,22 +1046,47 @@ export const checkUserRoomAccess = async (req, res) => {
                 c.course_name,
                 c.course_code
             FROM course_classes cc
-            JOIN courses c ON cc.course_id = c.id
+                LEFT JOIN courses c ON cc.course_id = c.id
             LEFT JOIN student_enrollments se 
                 ON cc.id = se.class_id 
-                AND se.status = 'enrolled' 
-                AND se.student_id = :user_id
-            WHERE cc.status = 'active'
+                    AND (
+                        CONVERT(se.student_id USING utf8mb4) COLLATE utf8mb4_general_ci IN (
+                            CONVERT(:user_id USING utf8mb4) COLLATE utf8mb4_general_ci,
+                            CONVERT(:alt_student_id USING utf8mb4) COLLATE utf8mb4_general_ci
+                        )
+                    )
+                    AND (
+                        se.status IN ('enrolled','active','registered','ongoing','completed')
+                        OR se.status IS NULL
+                    )
+                WHERE (cc.status IS NULL OR cc.status <> 'cancelled')
               AND (se.student_id IS NOT NULL OR cc.lecturer_id = :user_id)
         `, {
-            replacements: { user_id },
+                replacements: { user_id, alt_student_id: altStudentId || user_id },
             type: db.QueryTypes.SELECT
         });
 
-        // Ensure we have an array of classes; sequelize QueryTypes.SELECT returns an array
-        const classes = Array.isArray(classesResult) ? classesResult : (classesResult ? [classesResult] : []);
+    // Ensure we have an array of classes; sequelize QueryTypes.SELECT returns an array
+    const classes = Array.isArray(classesResult) ? classesResult : (classesResult ? [classesResult] : []);
 
         console.log(`Found ${classes.length} enrolled classes for user ${user_id}`);
+        if (classes.length === 0) {
+            // Extra diagnostics to help identify mismatches in production logs
+            try {
+                const diag = await db.query(`
+                    SELECT se.id, se.student_id, se.class_id, se.status
+                    FROM student_enrollments se
+                    WHERE CONVERT(se.student_id USING utf8mb4) COLLATE utf8mb4_general_ci IN (
+                        CONVERT(:user_id USING utf8mb4) COLLATE utf8mb4_general_ci,
+                        CONVERT(:alt_student_id USING utf8mb4) COLLATE utf8mb4_general_ci
+                    )
+                    LIMIT 5
+                `, { replacements: { user_id, alt_student_id: altStudentId || user_id }, type: db.QueryTypes.SELECT });
+                console.log('Enrollment diagnostic rows (up to 5):', diag);
+            } catch (e) {
+                console.warn('Enrollment diagnostics failed:', e?.message || e);
+            }
+        }
         
         // Helpers: normalize day and parse schedule safely
         const normalizeDay = (val) => {
@@ -936,7 +1150,49 @@ export const checkUserRoomAccess = async (req, res) => {
                             val = JSON.parse(val);
                         }
                     } catch (e) {
-                        console.warn('Schedule JSON parse failed; schedule treated as empty. Raw:', trimmed.slice(0, 80));
+                        // Fallback: try to parse common text formats like
+                        // "Senin 08:00-10:00, Rabu 10:00-12:00" or with dots "08.00-10.00"
+                        try {
+                            // Try to coerce single-quoted JSON into valid JSON (best-effort)
+                            if (/^\s*\[/.test(trimmed) || /^\s*\{/.test(trimmed)) {
+                                let coerced = trimmed
+                                    .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":') // quote keys
+                                    .replace(/'/g, '"'); // single -> double quotes
+                                try {
+                                    const coercedParsed = JSON.parse(coerced);
+                                    if (Array.isArray(coercedParsed)) return coercedParsed.filter(x => typeof x === 'object' && x);
+                                    if (typeof coercedParsed === 'object' && coercedParsed) return [coercedParsed];
+                                } catch (_) { /* ignore and continue to text parser */ }
+                            }
+                            const text = trimmed.replace(/\s*;\s*/g, ',').replace(/\u2013|\u2014/g, '-');
+                            const parts = text.split(/\s*,\s*/).filter(Boolean);
+                            const slots = [];
+                            for (const p of parts) {
+                                // Match patterns: Day HH:MM-HH:MM or Day HH.MM-HH.MM
+                                const m = p.match(/^(Senin|Selasa|Rabu|Kamis|Jumat|Jum'?at|Minggu|Sabtu|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(\d{1,2}[:.]\d{2})\s*[-–—]\s*(\d{1,2}[:.]\d{2})/i);
+                                if (m) {
+                                    const dayRaw = m[1];
+                                    const st = m[2].replace('.', ':');
+                                    const et = m[3].replace('.', ':');
+                                    slots.push({ day: dayRaw, start_time: st, end_time: et });
+                                    continue;
+                                }
+                                // Match patterns: Day HH-HH (hour-only)
+                                const m2 = p.match(/^(Senin|Selasa|Rabu|Kamis|Jumat|Jum'?at|Minggu|Sabtu|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(\d{1,2})\s*[-–—]\s*(\d{1,2})/i);
+                                if (m2) {
+                                    const dayRaw = m2[1];
+                                    const st = `${m2[2]}:00`;
+                                    const et = `${m2[3]}:00`;
+                                    slots.push({ day: dayRaw, start_time: st, end_time: et });
+                                    continue;
+                                }
+                                // Match patterns without day, e.g., "08:00-10:00" (apply to all days -> ignore)
+                            }
+                            if (slots.length) return slots;
+                        } catch (f) {
+                            // ignore and fall through
+                        }
+                        console.warn('Schedule parse failed (JSON & text). Treating as empty. Raw:', trimmed.slice(0, 120));
                         return [];
                     }
                 }
@@ -976,9 +1232,18 @@ export const checkUserRoomAccess = async (req, res) => {
 
                 if (!dayMatch) continue;
 
-                // Support alternative keys
-                const startTime = slot.start_time || slot.start || slot.startAt || slot.start_at || slot.mulai || slot.jam_mulai;
-                const endTime = slot.end_time || slot.end || slot.endAt || slot.end_at || slot.selesai || slot.jam_selesai;
+                // Support alternative keys; also support single-string time range like '08:00-10:00' or '08.00-10.00'
+                let startTime = slot.start_time || slot.start || slot.startAt || slot.start_at || slot.mulai || slot.jam_mulai;
+                let endTime = slot.end_time || slot.end || slot.endAt || slot.end_at || slot.selesai || slot.jam_selesai;
+                const timeRange = slot.time || slot.waktu || slot.jam;
+                if ((!startTime || !endTime) && typeof timeRange === 'string' && timeRange.trim()) {
+                    const cleaned = timeRange.replace(/\./g, ':');
+                    const parts = cleaned.split(/\s*[-–—]\s*/); // dash variants
+                    if (parts.length === 2) {
+                        startTime = startTime || parts[0];
+                        endTime = endTime || parts[1];
+                    }
+                }
                 const startMinutes = timeToMinutes(startTime);
                 const endMinutes = timeToMinutes(endTime);
                 if (startMinutes === null || endMinutes === null) {
@@ -987,8 +1252,13 @@ export const checkUserRoomAccess = async (req, res) => {
                 }
 
                 const nowMinutes = timeToMinutes(currentTime);
-                console.log(`Checking time: now=${currentTime}(${nowMinutes}) between ${startTime}(${startMinutes}) - ${endTime}(${endMinutes})`);
-                if (nowMinutes !== null && nowMinutes >= startMinutes && nowMinutes <= endMinutes) {
+                // Apply tolerance windows from system config
+                const earlyMin = Number(SYSTEM_CONFIG?.ATTENDANCE?.EARLY_CHECKIN_MINUTES) || 0;
+                const lateGrace = Number(SYSTEM_CONFIG?.ATTENDANCE?.LATE_THRESHOLD_MINUTES) || 0;
+                const effectiveStart = startMinutes !== null ? Math.max(0, startMinutes - earlyMin) : null;
+                const effectiveEnd = endMinutes !== null ? Math.min(24*60, endMinutes + lateGrace) : null;
+                console.log(`Checking time: now=${currentTime}(${nowMinutes}) between ${startTime}(${startMinutes}) - ${endMinutes}(${endMinutes}) with tol -${earlyMin}/+${lateGrace} => window ${effectiveStart}-${effectiveEnd}`);
+                if (nowMinutes !== null && effectiveStart !== null && effectiveEnd !== null && nowMinutes >= effectiveStart && nowMinutes <= effectiveEnd) {
                     console.log(`✅ ACCESS GRANTED! Time ${currentTime} is within ${startTime}-${endTime}`);
                     hasAccess = true;
                     accessInfo.push({
@@ -1001,7 +1271,7 @@ export const checkUserRoomAccess = async (req, res) => {
                         end_time: endTime
                     });
                 } else {
-                    console.log(`❌ Time ${currentTime} is NOT within ${startTime}-${endTime}`);
+                    console.log(`❌ Time ${currentTime} is NOT within ${startTime}-${endTime} (tolerance applied)`);
                 }
             }
         }

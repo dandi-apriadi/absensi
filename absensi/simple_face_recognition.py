@@ -12,9 +12,11 @@ class SimpleFaceRecognition:
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         self.recognizer = cv2.face.LBPHFaceRecognizer_create()
         self.known_faces = {}
-        self.dataset_path = "datasets"
-        self.models_path = "models"
-        self.temp_path = "temp"
+        # Resolve absolute paths relative to this file, so scanning works regardless of CWD
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.dataset_path = os.path.join(base_dir, "datasets")
+        self.models_path = os.path.join(base_dir, "models")
+        self.temp_path = os.path.join(base_dir, "temp")
         # LBPH returns lower value = better match. Typical good range < 60-70.
         # Make threshold configurable via env var LBPH_CONFIDENCE_THRESHOLD, default 65.
         try:
@@ -631,42 +633,45 @@ class SimpleFaceRecognition:
                     skipped += 1
                     continue
 
-            # Scan local models directory for any present models ONLY when backend list wasn't obtained
-            if not backend_list_obtained:
-                try:
-                    import glob
-                    pattern = os.path.join(self.models_path, "employee_*_model.yml")
-                    for path in glob.glob(pattern):
-                        try:
-                            filename = os.path.basename(path)
-                            # Extract employee_id between employee_ and _model.yml
-                            start = len("employee_")
-                            end = filename.rfind("_model.yml")
-                            if end > start:
-                                eid = filename[start:end]
-                                if eid not in self.known_faces:
-                                    # Lookup fullname from users table (optional)
-                                    fullname = None
-                                    try:
-                                        user_rows = simple_db.execute_query(
-                                            "SELECT fullname FROM users WHERE user_id = %s",
-                                            (eid,)
-                                        )
-                                        fullname = user_rows[0]['fullname'] if user_rows else None
-                                    except Exception:
-                                        pass
-                                    recognizer = cv2.face.LBPHFaceRecognizer_create()
-                                    recognizer.read(path)
-                                    self.known_faces[eid] = {
-                                        'name': fullname or eid,
-                                        'recognizer': recognizer
-                                    }
-                                    loaded += 1
-                        except Exception as e:
-                            print(f"Fallback scan load error for {path}: {e}")
-                            continue
-                except Exception as e:
-                    print(f"Fallback scan error: {e}")
+            # Always scan local models directory and add any models not present from backend/DB
+            try:
+                print(f"[FACE MODELS] Scanning local models dir: {self.models_path}")
+            except Exception:
+                pass
+            try:
+                import glob
+                pattern = os.path.join(self.models_path, "employee_*_model.yml")
+                for path in glob.glob(pattern):
+                    try:
+                        filename = os.path.basename(path)
+                        # Extract employee_id between employee_ and _model.yml
+                        start = len("employee_")
+                        end = filename.rfind("_model.yml")
+                        if end > start:
+                            eid = filename[start:end]
+                            if eid not in self.known_faces:
+                                # Lookup fullname from users table (optional)
+                                fullname = None
+                                try:
+                                    user_rows = simple_db.execute_query(
+                                        "SELECT fullname FROM users WHERE user_id = %s",
+                                        (eid,)
+                                    )
+                                    fullname = user_rows[0]['fullname'] if user_rows else None
+                                except Exception:
+                                    pass
+                                recognizer = cv2.face.LBPHFaceRecognizer_create()
+                                recognizer.read(path)
+                                self.known_faces[eid] = {
+                                    'name': fullname or eid,
+                                    'recognizer': recognizer
+                                }
+                                loaded += 1
+                    except Exception as e:
+                        print(f"Fallback scan load error for {path}: {e}")
+                        continue
+            except Exception as e:
+                print(f"Fallback scan error: {e}")
 
             if loaded == 0:
                 print("No face models found (backend/DB/local scan)")

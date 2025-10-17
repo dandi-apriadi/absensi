@@ -19,7 +19,9 @@ export const listFaceTraining = async (req, res) => {
       `SELECT ft.employee_id, ft.model_id, ft.training_images_count, ft.model_path, ft.status, ft.created_at, ft.updated_at,
               u.fullname
        FROM face_training ft
-       LEFT JOIN users u ON u.user_id = ft.employee_id
+       LEFT JOIN users u ON
+           CONVERT(u.user_id USING utf8mb4) COLLATE utf8mb4_general_ci =
+           CONVERT(ft.employee_id USING utf8mb4) COLLATE utf8mb4_general_ci
        ${where}
        ORDER BY ft.created_at DESC`,
       { replacements, type: db.QueryTypes.SELECT }
@@ -40,7 +42,9 @@ export const getFaceTrainingByEmployee = async (req, res) => {
       `SELECT ft.employee_id, ft.model_id, ft.training_images_count, ft.model_path, ft.status, ft.created_at, ft.updated_at,
               u.fullname
        FROM face_training ft
-       LEFT JOIN users u ON u.user_id = ft.employee_id
+       LEFT JOIN users u ON
+           CONVERT(u.user_id USING utf8mb4) COLLATE utf8mb4_general_ci =
+           CONVERT(ft.employee_id USING utf8mb4) COLLATE utf8mb4_general_ci
        WHERE ft.employee_id = :employee_id
        ORDER BY ft.created_at DESC
        LIMIT 1`,

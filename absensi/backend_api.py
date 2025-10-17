@@ -248,6 +248,9 @@ class BackendAPI:
         try:
             from simple_database import simple_db
             from datetime import datetime
+            import os
+            import re
+            import json
             
             # Get current day and time
             now = datetime.now()
@@ -270,6 +273,52 @@ class BackendAPI:
             print(f"[BACKEND API] Checking access for {user_id}")
             print(f"[BACKEND API] Current day: {current_day_en} ({current_day_id})")
             print(f"[BACKEND API] Current time: {current_time}")
+
+            # Tolerance windows similar to backend CONFIG
+            try:
+                early_min = int(os.getenv('EARLY_CHECKIN_MINUTES', os.getenv('LATE_THRESHOLD_MINUTES', '0')))
+            except Exception:
+                early_min = 0
+            try:
+                late_grace = int(os.getenv('LATE_THRESHOLD_MINUTES', '0'))
+            except Exception:
+                late_grace = 0
+
+            def time_to_minutes(val: str):
+                try:
+                    if val is None:
+                        return None
+                    s = str(val).strip().replace('.', ':')
+                    if not s:
+                        return None
+                    parts = s.split(':')
+                    hh = int(parts[0])
+                    mm = int(parts[1]) if len(parts) > 1 else 0
+                    return hh * 60 + mm
+                except Exception:
+                    return None
+
+            def normalize_day_token(val: str):
+                if not val:
+                    return None
+                s = str(val).strip().lower()
+                s = re.sub(r"[’'`]", '', s)
+                s = re.sub(r"\s+", '', s)
+                map_en = {
+                    'monday': 'senin', 'tuesday': 'selasa', 'wednesday': 'rabu',
+                    'thursday': 'kamis', 'friday': 'jumat', 'saturday': 'sabtu', 'sunday': 'minggu'
+                }
+                map_id = {
+                    'senin': 'senin', 'selasa': 'selasa', 'rabu': 'rabu', 'kamis': 'kamis',
+                    'jumat': 'jumat', 'jumaat': 'jumat', 'minggu': 'minggu', 'sabtu': 'sabtu'
+                }
+                if s in map_id:
+                    return map_id[s]
+                if s in map_en:
+                    return map_en[s]
+                if s in ('jumat', 'jumat'):
+                    return 'jumat'
+                return s
 
             # Check if user is enrolled in any classes with schedule for today
             # Using schema: student_enrollments.class_id
@@ -329,29 +378,61 @@ class BackendAPI:
             has_access = False
             access_info = []
             
-            for cls in result:
-                schedule_json = cls.get('schedule', '[]')
+            def parse_schedule_slots(raw):
                 try:
-                    import json
-                    # Handle double-encoded JSON
-                    if isinstance(schedule_json, str):
-                        # First decode
-                        schedule = json.loads(schedule_json)
-                        # If result is still a string, decode again
-                        if isinstance(schedule, str):
-                            schedule = json.loads(schedule)
-                    else:
-                        schedule = schedule_json or []
-                        
-                    # Ensure schedule is a list
-                    if not isinstance(schedule, list):
-                        schedule = []
-                        
+                    if raw is None:
+                        return []
+                    val = raw
+                    if isinstance(val, str):
+                        trimmed = val.strip()
+                        # Try JSON first
+                        try:
+                            val = json.loads(trimmed)
+                            if isinstance(val, str):
+                                val = json.loads(val)
+                        except Exception:
+                            # Try to coerce single-quoted or unquoted-key JSON
+                            try:
+                                coerced = re.sub(r"([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:", r'\1"\2":', trimmed)
+                                coerced = coerced.replace("'", '"')
+                                val = json.loads(coerced)
+                            except Exception:
+                                # Parse common text formats e.g., "Senin 08:00-10:00, Rabu 10:00-12:00"
+                                text = re.sub(r"\s*;\s*", ',', trimmed)
+                                text = re.sub(r"[\u2013\u2014]", '-', text)
+                                parts = [p for p in re.split(r"\s*,\s*", text) if p]
+                                slots = []
+                                for p in parts:
+                                    m = re.match(r"^(Senin|Selasa|Rabu|Kamis|Jumat|Jum'?at|Minggu|Sabtu|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(\d{1,2}[:.]\d{2})\s*[-–—]\s*(\d{1,2}[:.]\d{2})", p, flags=re.I)
+                                    if m:
+                                        day_raw = m.group(1)
+                                        st = m.group(2).replace('.', ':')
+                                        et = m.group(3).replace('.', ':')
+                                        slots.append({'day': day_raw, 'start_time': st, 'end_time': et})
+                                        continue
+                                    m2 = re.match(r"^(Senin|Selasa|Rabu|Kamis|Jumat|Jum'?at|Minggu|Sabtu|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(\d{1,2})\s*[-–—]\s*(\d{1,2})", p, flags=re.I)
+                                    if m2:
+                                        day_raw = m2.group(1)
+                                        st = f"{m2.group(2)}:00"
+                                        et = f"{m2.group(3)}:00"
+                                        slots.append({'day': day_raw, 'start_time': st, 'end_time': et})
+                                if slots:
+                                    return slots
+                                return []
+                    # Normalize to array of dicts
+                    if isinstance(val, list):
+                        return [x for x in val if isinstance(x, dict)]
+                    if isinstance(val, dict):
+                        return [val]
+                    return []
                 except Exception as e:
-                    print(f"[BACKEND API] Error parsing schedule for class {cls['class_name']}: {e}")
-                    continue
-                
-                print(f"[BACKEND API] Class {cls['class_name']} schedule: {schedule}")
+                    print(f"[BACKEND API] parse_schedule_slots error: {e}")
+                    return []
+
+            for cls in result:
+                schedule_raw = cls.get('schedule')
+                schedule = parse_schedule_slots(schedule_raw)
+                print(f"[BACKEND API] Class {cls['class_name']} schedule slots: {schedule}")
                 
                 # Check if current day and time matches any schedule
                 for slot in schedule:
@@ -360,35 +441,34 @@ class BackendAPI:
                         print(f"[BACKEND API] Invalid slot format: {slot}")
                         continue
                     # Normalize possible keys and cases: 'day', 'day_of_week', localized strings
-                    slot_day = slot.get('day') or slot.get('day_of_week') or ''
-                    slot_day_norm = str(slot_day).strip().lower()
-                    # Accept English or Indonesian names (lowercased)
-                    day_variants = {
-                        'monday': ['monday', 'senin'],
-                        'tuesday': ['tuesday', 'selasa'],
-                        'wednesday': ['wednesday', 'rabu'],
-                        'thursday': ['thursday', 'kamis'],
-                        'friday': ['friday', 'jumat', 'jum\u2019at', "jum'at"],
-                        'saturday': ['saturday', 'sabtu'],
-                        'sunday': ['sunday', 'minggu']
-                    }
-                    # Build today's acceptable tokens
-                    today_tokens = []
-                    en_token = current_day_en.lower()
-                    id_token = current_day_id.lower()
-                    today_tokens.extend(day_variants.get(en_token, [en_token]))
-                    if id_token not in today_tokens:
-                        today_tokens.append(id_token)
+                    slot_day = slot.get('day') or slot.get('day_of_week') or slot.get('hari') or ''
+                    slot_day_norm = normalize_day_token(slot_day)
+                    # Build today's acceptable tokens (normalized to Indonesian lowercase)
+                    today_tokens = set([
+                        normalize_day_token(current_day_en),
+                        normalize_day_token(current_day_id)
+                    ])
                     day_match = slot_day_norm in today_tokens
                     
                     if day_match:
-                        start_time = str(slot.get('start_time', '')).strip()
-                        end_time = str(slot.get('end_time', '')).strip()
-                        
-                        print(f"[BACKEND API] Checking time: {current_time} between {start_time} - {end_time}")
-                        
-                        # Check if current time is within the schedule
-                        if start_time <= current_time <= end_time:
+                        # Support alternative keys and time ranges like '08:00-10:00'
+                        start_time = (slot.get('start_time') or slot.get('start') or '').strip()
+                        end_time = (slot.get('end_time') or slot.get('end') or '').strip()
+                        if (not start_time or not end_time) and isinstance(slot.get('time') or slot.get('jam') or slot.get('waktu'), str):
+                            tr = (slot.get('time') or slot.get('jam') or slot.get('waktu')).replace('.', ':')
+                            parts = re.split(r"\s*[-–—]\s*", tr)
+                            if len(parts) == 2:
+                                start_time = start_time or parts[0]
+                                end_time = end_time or parts[1]
+
+                        now_min = time_to_minutes(current_time)
+                        s_min = time_to_minutes(start_time)
+                        e_min = time_to_minutes(end_time)
+                        print(f"[BACKEND API] Checking time: {current_time}({now_min}) between {start_time}({s_min}) - {end_time}({e_min}) with tol -{early_min}/+{late_grace}")
+                        effective_start = s_min - early_min if s_min is not None else None
+                        effective_end = e_min + late_grace if e_min is not None else None
+                        # Check if current time is within the schedule with tolerance
+                        if None not in (now_min, effective_start, effective_end) and effective_start <= now_min <= effective_end:
                             print(f"[BACKEND API] ✅ ACCESS GRANTED! Time {current_time} is within {start_time}-{end_time}")
                             has_access = True
                             access_info.append({
@@ -396,7 +476,7 @@ class BackendAPI:
                                 'class_name': cls['class_name'],
                                 'course_name': cls['course_name'],
                                 'course_code': cls['course_code'],
-                                'schedule_day': slot['day'],
+                                'schedule_day': slot.get('day') or slot.get('day_of_week') or slot.get('hari'),
                                 'start_time': start_time,
                                 'end_time': end_time
                             })
