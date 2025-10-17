@@ -48,6 +48,14 @@ export const login = async (req, res) => {
             });
         }
 
+        // Regenerate session to prevent fixation and ensure fresh cookie is set
+        await new Promise((resolve, reject) => {
+            req.session.regenerate((err) => {
+                if (err) return reject(err);
+                return resolve();
+            });
+        });
+
         // Create session (normalized snake_case keys to match middleware)
         req.session.user_id = user.user_id;
         req.session.role = user.role;
@@ -55,12 +63,23 @@ export const login = async (req, res) => {
         req.session.userId = user.user_id;
         req.session.userRole = user.role;
 
+        // Adjust cookie attributes for this response if proxy doesn't mark request as secure
+        try {
+            const xfProto = req.headers['x-forwarded-proto'];
+            const isHttps = req.secure || (typeof xfProto === 'string' && xfProto.toLowerCase().includes('https'));
+            if (!isHttps && req.session?.cookie) {
+                // Allow setting cookie even if proxy header missing
+                req.session.cookie.secure = false;
+                // Keep SameSite as configured by middleware; default Lax is safe for same-origin
+            }
+        } catch {}
+
         console.log('=== LOGIN SESSION DETAILS ===');
+        console.log('req.secure:', req.secure, 'x-forwarded-proto:', req.headers['x-forwarded-proto']);
         console.log('Session ID:', req.session.id);
         console.log('Session user_id:', req.session.user_id);
         console.log('Session role:', req.session.role);
         console.log('Cookie settings:', req.session.cookie);
-        console.log('Full session:', req.session);
         console.log('==============================');
 
         // Prepare simplified response data

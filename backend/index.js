@@ -7,6 +7,7 @@ import SequelizeStore from "connect-session-sequelize";
 import helmet from "helmet";
 import db, { ensureDatabaseConnection } from "./config/Database.js";
 import AllRoutes from "./routes/routes-backend.js";
+import { runSchemaGuard } from "./migrations/schemaGuard.js";
 dotenv.config();
 
 // Pastikan app dideklarasikan sebelum dipakai
@@ -73,6 +74,12 @@ let sameSite = 'lax';
 let cookieSecure = false;
 let cookieDomain = undefined;
 
+// If cross-site, force SameSite=None and Secure=true
+if (crossSite) {
+    sameSite = 'none';
+    cookieSecure = true;
+}
+
 // Override with environment variables if set
 if (process.env.SESSION_SAMESITE) {
     sameSite = process.env.SESSION_SAMESITE.toLowerCase();
@@ -82,30 +89,42 @@ if (process.env.SESSION_SAMESITE) {
 const envSecure = (process.env.SESSION_COOKIE_SECURE || '').toLowerCase();
 if (envSecure === 'false') cookieSecure = false;
 else if (envSecure === 'true') cookieSecure = true;
-else cookieSecure = isProd; // Default: secure in production only
+else cookieSecure = cookieSecure || isProd; // Default: secure in production only (or forced by cross-site)
 
 if (process.env.COOKIE_DOMAIN) {
     cookieDomain = process.env.COOKIE_DOMAIN;
 }
 
-console.log('Session cookie config:', { 
+// Support secret rotation: allow multiple secrets for verification
+const primarySecret = process.env.SESS_SECRET || 'default_secret_key';
+const extraSecretsEnv = process.env.SESSION_SECRETS || process.env.SESS_SECRET_FALLBACKS || '';
+const extraSecrets = extraSecretsEnv.split(',').map((s) => s.trim()).filter(Boolean);
+const sessionSecrets = [primarySecret, ...extraSecrets];
+
+if (isProd && primarySecret === 'default_secret_key') {
+    console.warn('⚠️ Using default session secret in production! Set SESS_SECRET to a strong value.');
+}
+
+console.log('Session config:', { 
     sameSite, 
     cookieSecure, 
     cookieDomain, 
     FRONTEND_URL, 
     BACKEND_URL,
     isProd,
-    crossSite 
+    crossSite,
+    secretsCount: sessionSecrets.length
 });
 
 app.use(
     session({
-        secret: process.env.SESS_SECRET || "default_secret_key",
+        // Accept cookies signed with any of the provided secrets (first is used to sign new cookies)
+        secret: sessionSecrets,
         resave: false,
         saveUninitialized: false,
         store: store,
         proxy: TRUST_PROXY_ENV !== 'false', // honor X-Forwarded-* when setting secure cookies
-        name: 'iot.session.id', // Custom session cookie name
+        name: 'connect.sid', // Align with client cookie to persist session across requests
         cookie: {
             secure: cookieSecure,
             httpOnly: true,
@@ -116,12 +135,22 @@ app.use(
     })
 );
 
-// Simplified per-request cookie tuner for development
+// Simplified per-request cookie tuner
 app.use((req, res, next) => {
     try {
-        // For local development without HTTPS, ensure cookies work
-        if (!isProd && req.session && req.session.cookie) {
+        if (req.session && req.session.cookie) {
+            // Determine protocol from header if available
+            const xfProto = req.headers['x-forwarded-proto'];
+            const isHttps = req.secure || (typeof xfProto === 'string' && xfProto.toLowerCase().includes('https'));
+
+            // If proxy doesn't pass proto and we're in prod, log a warning.
+            // Keep cookie.secure as configured so browsers on HTTPS still accept it.
+            if (!isHttps && isProd && cookieSecure) {
+                console.warn('⚠️ Incoming request not marked secure (missing X-Forwarded-Proto). Ensure proxy sets X-Forwarded-Proto=https.');
+            }
             req.session.cookie.secure = cookieSecure;
+
+            // Apply sameSite determined at startup (can be overridden by env)
             req.session.cookie.sameSite = sameSite;
         }
     } catch (e) {
@@ -161,6 +190,9 @@ const initDatabase = async () => {
             await store.sync();
             console.log('✅ Session store synchronized');
         }
+
+        // Run schema guard to auto-fix critical columns/indexes in production
+        await runSchemaGuard();
         return true;
     } catch (error) {
         console.error('❌ Database initialization error:', error.name, error.message);

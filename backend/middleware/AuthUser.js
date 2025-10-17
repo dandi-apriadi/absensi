@@ -11,6 +11,15 @@ export const verifyUser = async (req, res, next) => {
     console.log('Session ID:', req.session?.id);
     console.log('Session user_id:', req.session?.user_id);
     console.log('Session role:', req.session?.role);
+    // Extract SID from cookie for diagnostics
+    try {
+        const rawCookie = req.headers.cookie || '';
+        const match = rawCookie.match(/connect\.sid=s%3A([^\.]+)\./);
+        const cookieSid = match ? decodeURIComponent(match[1]) : null;
+        console.log('Incoming Cookie SID:', cookieSid);
+    } catch (e) {
+        console.log('Cookie SID parse error:', e?.message);
+    }
     console.log('Full session data:', req.session);
     console.log('Request headers:', req.headers);
     console.log('Cookies:', req.headers.cookie);
@@ -26,6 +35,30 @@ export const verifyUser = async (req, res, next) => {
     }
 
     if (!req.session.user_id) {
+        // Attempt to detect stale/invalid signed cookie and clear it
+        try {
+            const rawCookie = req.headers.cookie || '';
+            const match = rawCookie.match(/connect\.sid=s%3A([^\.]+)\./);
+            const cookieSid = match ? decodeURIComponent(match[1]) : null;
+            if (cookieSid && cookieSid !== req.session?.id) {
+                console.warn('🧹 Clearing stale/invalid connect.sid cookie. Cookie SID does not match active session ID.');
+                const host = req.hostname || req.headers.host || '';
+                const envDomain = process.env.COOKIE_DOMAIN || '';
+                const domainVariants = Array.from(new Set([
+                    undefined,
+                    envDomain || undefined,
+                    host || undefined,
+                    host ? `.${host.replace(/^\./, '')}` : undefined,
+                    envDomain ? `.${envDomain.replace(/^\./, '')}` : undefined,
+                ].filter(Boolean)));
+                for (const d of domainVariants) {
+                    const opts = { path: '/' };
+                    if (d) opts.domain = d;
+                    res.clearCookie('connect.sid', opts);
+                }
+            }
+        } catch {}
+
         console.log('❌ No user_id in session - returning 401');
         return res.status(401).json({ 
             msg: "Mohon login ke Akun Anda!", 

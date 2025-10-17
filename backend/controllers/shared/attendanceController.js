@@ -10,6 +10,8 @@ import {
     db
 } from "../../models/index.js";
 import { Op } from "sequelize";
+import momentTz from "moment-timezone";
+import { SYSTEM_CONFIG } from "../../config/systemSettings.js";
 
 // ===============================================
 // ATTENDANCE MANAGEMENT CONTROLLERS
@@ -809,11 +811,23 @@ export const checkUserRoomAccess = async (req, res) => {
         const checkDate = date || new Date().toISOString().split('T')[0];
         console.log('Check date:', checkDate);
 
-        // Manual query since we don't use Sequelize associations
-        // First, check if user is enrolled in any classes with schedule for today
-        const now = new Date();
-        const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
-        const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+        // Determine timezone-aware current time/day
+        const tz = SYSTEM_CONFIG?.APPLICATION?.TIMEZONE || 'Asia/Jakarta';
+        // If client passes an ISO-like date/time, honor it; else use now in configured TZ
+        let now = momentTz.tz(tz);
+        if (date) {
+            const parsed = momentTz.tz(date, [
+                momentTz.ISO_8601,
+                'YYYY-MM-DD',
+                'YYYY-MM-DD HH:mm',
+                'YYYY-MM-DDTHH:mm'
+            ], tz, true);
+            if (parsed?.isValid?.() && parsed.isValid()) {
+                now = parsed.tz(tz);
+            }
+        }
+        const currentDay = now.format('dddd'); // English day name
+        const currentTime = now.format('HH:mm'); // HH:MM 24h
         
         // Create day mapping
         const dayMapping = {
@@ -835,7 +849,7 @@ export const checkUserRoomAccess = async (req, res) => {
         console.log(`Current time: ${currentTime}`);
         console.log(`Check date: ${checkDate}`);
         
-    const classesResult = await db.query(`
+        const classesResult = await db.query(`
             SELECT 
                 cc.id as class_id,
                 cc.class_name,
@@ -856,24 +870,28 @@ export const checkUserRoomAccess = async (req, res) => {
         });
 
         // Ensure we have an array of classes; sequelize QueryTypes.SELECT returns an array
-    const classes = Array.isArray(classesResult) ? classesResult : (classesResult ? [classesResult] : []);
+        const classes = Array.isArray(classesResult) ? classesResult : (classesResult ? [classesResult] : []);
 
         console.log(`Found ${classes.length} enrolled classes for user ${user_id}`);
         
         // Helpers: normalize day and parse schedule safely
         const normalizeDay = (val) => {
             if (!val && val !== 0) return undefined;
-            const mapEN = { Monday:'Senin', Tuesday:'Selasa', Wednesday:'Rabu', Thursday:'Kamis', Friday:'Jumat', Saturday:'Sabtu', Sunday:'Minggu' };
-            const mapID = { Senin:'Senin', Selasa:'Selasa', Rabu:'Rabu', Kamis:'Kamis', Jumat:'Jumat', Sabtu:'Sabtu', Minggu:'Minggu' };
+            const mapEN = { monday:'Senin', tuesday:'Selasa', wednesday:'Rabu', thursday:'Kamis', friday:'Jumat', saturday:'Sabtu', sunday:'Minggu' };
+            const mapID = { senin:'Senin', selasa:'Selasa', rabu:'Rabu', kamis:'Kamis', jumat:'Jumat', jumaat:'Jumat', sabtu:'Sabtu', minggu:'Minggu' };
             const mapNum1 = { '1':'Senin','2':'Selasa','3':'Rabu','4':'Kamis','5':'Jumat','6':'Sabtu','7':'Minggu' };
             const mapNum0 = { '0':'Minggu','1':'Senin','2':'Selasa','3':'Rabu','4':'Kamis','5':'Jumat','6':'Sabtu' };
-            const s = String(val).trim();
-            // Title-case
-            const title = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-            if (mapID[title]) return mapID[title];
-            if (mapEN[title]) return mapEN[title];
+            let s = String(val).trim().toLowerCase();
+            // Remove common apostrophes/diacritics and spaces: "Jum'at", "Jum’at"
+            s = s.replace(/[’'`]/g, "");
+            s = s.replace(/\s+/g, "");
+            if (mapID[s]) return mapID[s];
+            if (mapEN[s]) return mapEN[s];
             if (mapNum1[s] !== undefined) return mapNum1[s];
             if (mapNum0[s] !== undefined) return mapNum0[s];
+            // Try title-case fallback
+            const title = s.charAt(0).toUpperCase() + s.slice(1);
+            if (['JumAt','Jumaat'].includes(title)) return 'Jumat';
             return undefined;
         };
 
@@ -950,7 +968,7 @@ export const checkUserRoomAccess = async (req, res) => {
                     // Skip invalid slot (e.g., primitives from malformed input)
                     continue;
                 }
-                const dayValue = slot.day ?? slot.day_name ?? slot.hari ?? slot.Day ?? slot.dayOfWeek ?? slot.dow;
+                const dayValue = slot.day ?? slot.day_name ?? slot.hari ?? slot.Day ?? slot.dayOfWeek ?? slot.day_of_week ?? slot.dow;
                 const slotDayNorm = normalizeDay(dayValue);
                 const dayMatch = slotDayNorm === currentDayIndonesian;
                 console.log(`Checking slot:`, slot);
