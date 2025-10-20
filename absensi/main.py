@@ -1636,7 +1636,7 @@ class FaceAttendanceApp:
                     reason='Attendance marked + door access granted',
                     session_id=session_id
                 )
-                
+                print(f"[ACCESS FLOW] Attendance success. Will open door for {employee_name} (session_id={session_id})")
                 return {
                     'success': True,
                     'reason': f'Selamat datang {employee_name}! Absensi dicatat + Pintu dibuka',
@@ -1653,7 +1653,7 @@ class FaceAttendanceApp:
                     reason='Door access granted (attendance already marked)',
                     session_id=session_id
                 )
-                
+                print(f"[ACCESS FLOW] Attendance already marked. Will open door for {employee_name} (session_id={session_id})")
                 return {
                     'success': True,
                     'reason': f'Selamat datang kembali {employee_name}! Pintu dibuka',
@@ -1691,15 +1691,34 @@ class FaceAttendanceApp:
             # Referensi perilaku dari relay.txt (fingerprint): menggunakan PIN 17 dan durasi 5 detik
             # Di relay_control kita sudah buat default bisa di override via env.
             # Di sini kita eksplisit set duration=5 agar konsisten dengan sistem fingerprint.
+            print("[ACCESS FLOW] Calling activate_door(duration=5)...")
             success = activate_door(duration=5, callback=door_closed_callback)
+            print(f"[ACCESS FLOW] activate_door returned {success}")
             
             if success:
+                try:
+                    # Fetch relay debug info for visibility
+                    from relay_control import get_door_status, get_door_debug
+                    dbg = get_door_debug()
+                    print(f"[ACCESS FLOW] Relay debug: {dbg}")
+                    now_status = get_door_status()
+                    print(f"[ACCESS FLOW] Door status after activate: {now_status}")
+                except Exception as e:
+                    print(f"[ACCESS FLOW] Unable to get relay debug: {e}")
                 self.log_recognition("🔓 Pintu dibuka selama 5 detik")
                 success_beep()  # Play success sound
                 # Update door status indicator
                 self.update_door_status()
             else:
                 self.log_recognition("⚠️ Error mengaktifkan relay pintu")
+                try:
+                    from relay_control import get_door_status, get_door_debug
+                    dbg = get_door_debug()
+                    print(f"[ACCESS FLOW] Relay debug on failure: {dbg}")
+                    now_status = get_door_status()
+                    print(f"[ACCESS FLOW] Door status after failure: {now_status}")
+                except Exception as e:
+                    print(f"[ACCESS FLOW] Unable to get relay debug on failure: {e}")
                 
         except Exception as e:
             print(f"[RELAY] Error activating door relay: {e}")
