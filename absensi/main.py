@@ -283,6 +283,23 @@ class FaceAttendanceApp:
         
         # Setup cleanup on window close to ensure door is locked
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+        # Optionally start Edge Control HTTP server for remote manual open
+        try:
+            import os
+            if os.getenv('EDGE_CONTROL_ENABLED', 'false').lower() in ('1','true','yes'):
+                try:
+                    # Lazy import to avoid requiring Flask when disabled
+                    from edge_control_server import start_edge_server
+                    started = start_edge_server()
+                    if started:
+                        print('[EDGE] Edge Control server started')
+                    else:
+                        print('[EDGE] Edge Control server not started (see logs)')
+                except Exception as e:
+                    print(f"[EDGE] Failed to start edge server: {e}")
+        except Exception:
+            pass
     
     def on_closing(self):
         """Handle window close event - ENSURE DOOR IS LOCKED"""
@@ -481,6 +498,42 @@ class FaceAttendanceApp:
         
         self.recognition_info = ctk.CTkTextbox(right_panel, width=300, height=200)
         self.recognition_info.pack(padx=10, pady=10)
+
+        # Kontrol pintu manual dipindah ke atas agar selalu terlihat di window kecil
+        try:
+            manual_frame = ctk.CTkFrame(right_panel)
+            manual_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+            ctk.CTkLabel(
+                manual_frame,
+                text="Kontrol Pintu Manual",
+                font=ctk.CTkFont(size=14, weight="bold")
+            ).grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 5), sticky="w")
+
+            ctk.CTkLabel(manual_frame, text="Durasi (detik):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+            import os as _os
+            self.manual_duration_var = tk.StringVar(value=str(int(_os.getenv('RELAY_DEFAULT_DURATION', '5'))))
+            self.manual_duration_entry = ctk.CTkEntry(manual_frame, textvariable=self.manual_duration_var, width=80)
+            self.manual_duration_entry.grid(row=1, column=1, padx=10, pady=5, sticky="w")
+
+            self.open_door_btn = ctk.CTkButton(
+                manual_frame,
+                text="Buka Pintu (Manual)",
+                command=self.open_door_manual,
+                fg_color="#1f7a1f",
+                width=200
+            )
+            self.open_door_btn.grid(row=2, column=0, columnspan=2, padx=10, pady=(5, 10), sticky="w")
+
+            _is_admin = self.current_user.get('role') in ['super-admin', 'lecturer']
+            self.open_door_btn.configure(state=("normal" if _is_admin else "disabled"))
+            self.manual_duration_entry.configure(state=("normal" if _is_admin else "disabled"))
+            # Catatan: fitur uji/scan pin dihapus; gunakan konfigurasi tetap
+        except Exception as _e:
+            try:
+                print(f"[UI] Failed to create manual door control (top): {_e}")
+            except Exception:
+                pass
         
         # Today's attendance
         attendance_label = ctk.CTkLabel(right_panel, text="Absensi Hari Ini", font=ctk.CTkFont(size=16, weight="bold"))
@@ -490,8 +543,8 @@ class FaceAttendanceApp:
         list_frame = ctk.CTkFrame(right_panel)
         list_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
-        # Attendance treeview
-        self.attendance_tree = ttk.Treeview(list_frame, columns=("Name", "Time", "Status"), show="headings", height=15)
+        # Attendance treeview (height dikurangi agar kontrol manual tetap terlihat)
+        self.attendance_tree = ttk.Treeview(list_frame, columns=("Name", "Time", "Status"), show="headings", height=10)
         self.attendance_tree.heading("Name", text="Nama")
         self.attendance_tree.heading("Time", text="Waktu")
         self.attendance_tree.heading("Status", text="Status")
@@ -1688,7 +1741,7 @@ class FaceAttendanceApp:
                 # Update door status indicator
                 self.window.after(0, self.update_door_status)
             
-            # Referensi perilaku dari relay.txt (fingerprint): menggunakan PIN 17 dan durasi 5 detik
+            # Referensi perilaku dari relay.txt (fingerprint): menggunakan PIN 18 dan durasi 5 detik
             # Di relay_control kita sudah buat default bisa di override via env.
             # Di sini kita eksplisit set duration=5 agar konsisten dengan sistem fingerprint.
             print("[ACCESS FLOW] Calling activate_door(duration=5)...")
@@ -1748,6 +1801,169 @@ class FaceAttendanceApp:
                 
         except Exception as e:
             print(f"Error updating door status: {e}")
+
+    def open_door_manual(self):
+        """Manual override: open door relay for a specified duration (admin/lecturer only)."""
+        try:
+            role = (self.current_user or {}).get('role')
+            if role not in ['super-admin', 'lecturer']:
+                try:
+                    messagebox.showerror("Tidak Diizinkan", "Hanya Admin/Dosen yang dapat membuka pintu secara manual.")
+                except Exception:
+                    pass
+                try:
+                    denied_beep()
+                except Exception:
+                    pass
+                return
+
+            # Parse duration with sane bounds
+            try:
+                raw = self.manual_duration_var.get().strip() if hasattr(self, 'manual_duration_var') else '5'
+                duration = float(raw)
+            except Exception:
+                duration = 5.0
+            duration = max(1.0, min(30.0, duration))  # clamp to [1,30] seconds
+
+            def door_closed_callback():
+                try:
+                    self.log_recognition("🔒 Pintu ditutup kembali (manual)")
+                except Exception:
+                    pass
+                # Update door status indicator
+                try:
+                    self.window.after(0, self.update_door_status)
+                except Exception:
+                    pass
+
+            # Attempt to open door
+            try:
+                self.log_recognition(f"🔓 Manual override: membuka pintu selama {int(duration)} detik…")
+            except Exception:
+                pass
+
+            ok = False
+            try:
+                ok = activate_door(duration=duration, callback=door_closed_callback)
+            except Exception as e:
+                print(f"[MANUAL DOOR] Error calling activate_door: {e}")
+                ok = False
+
+            # Log to backend/db
+            try:
+                backend_api.log_door_access(
+                    self.current_user.get('user_id'),
+                    access_type='manual_override',
+                    access_status=('granted' if ok else 'denied'),
+                    reason=(f'Manual door open for {int(duration)}s' if ok else 'Relay activation failed')
+                )
+            except Exception as e:
+                print(f"[MANUAL DOOR] Access log error: {e}")
+
+            if ok:
+                try:
+                    success_beep()
+                except Exception:
+                    pass
+                try:
+                    self.update_door_status()
+                except Exception:
+                    pass
+                try:
+                    self.log_recognition(f"✅ Pintu dibuka (manual) selama {int(duration)} detik")
+                except Exception:
+                    pass
+            else:
+                try:
+                    self.log_recognition("⚠️ Gagal membuka pintu (manual)")
+                except Exception:
+                    pass
+                try:
+                    denied_beep()
+                except Exception:
+                    pass
+
+        except Exception as e:
+            print(f"[MANUAL DOOR] Unexpected error: {e}")
+            try:
+                self.log_recognition(f"⚠️ Error membuka pintu: {e}")
+            except Exception:
+                pass
+
+    # Fitur uji/scan pin telah dihapus
+
+            # Parse duration with sane bounds
+            try:
+                raw = self.manual_duration_var.get().strip() if hasattr(self, 'manual_duration_var') else '5'
+                duration = float(raw)
+            except Exception:
+                duration = 5.0
+            duration = max(1.0, min(30.0, duration))  # clamp to [1,30] seconds
+
+            def door_closed_callback():
+                try:
+                    self.log_recognition("🔒 Pintu ditutup kembali (manual)")
+                except Exception:
+                    pass
+                # Update door status indicator
+                try:
+                    self.window.after(0, self.update_door_status)
+                except Exception:
+                    pass
+
+            # Attempt to open door
+            try:
+                self.log_recognition(f"🔓 Manual override: membuka pintu selama {int(duration)} detik…")
+            except Exception:
+                pass
+
+            ok = False
+            try:
+                ok = activate_door(duration=duration, callback=door_closed_callback)
+            except Exception as e:
+                print(f"[MANUAL DOOR] Error calling activate_door: {e}")
+                ok = False
+
+            # Log to backend/db
+            try:
+                backend_api.log_door_access(
+                    self.current_user.get('user_id'),
+                    access_type='manual_override',
+                    access_status=('granted' if ok else 'denied'),
+                    reason=(f'Manual door open for {int(duration)}s' if ok else 'Relay activation failed')
+                )
+            except Exception as e:
+                print(f"[MANUAL DOOR] Access log error: {e}")
+
+            if ok:
+                try:
+                    success_beep()
+                except Exception:
+                    pass
+                try:
+                    self.update_door_status()
+                except Exception:
+                    pass
+                try:
+                    self.log_recognition(f"✅ Pintu dibuka (manual) selama {int(duration)} detik")
+                except Exception:
+                    pass
+            else:
+                try:
+                    self.log_recognition("⚠️ Gagal membuka pintu (manual)")
+                except Exception:
+                    pass
+                try:
+                    denied_beep()
+                except Exception:
+                    pass
+
+        except Exception as e:
+            print(f"[MANUAL DOOR] Unexpected error: {e}")
+            try:
+                self.log_recognition(f"⚠️ Error membuka pintu: {e}")
+            except Exception:
+                pass
         
     def capture_dataset(self):
         """Capture face dataset for current logged in user"""

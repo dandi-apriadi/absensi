@@ -38,7 +38,7 @@ class RelayController:
     """
     def __init__(self, relay_pin=18, led_pin=24, buzzer_pin=23):
         """Initialize controller.
-        Defaults previously used relay_pin=18. Fingerprint reference (relay.txt) uses pin 17 and 5s unlock.
+    Defaults previously used relay_pin=18. Fingerprint reference (relay.txt) uses pin 18 and 5s unlock.
         Allow overriding via environment variables RELAY_PIN / RELAY_DEFAULT_DURATION.
         
         IMPORTANT: Relay starts in LOCKED state (GPIO.LOW) for security.
@@ -52,10 +52,7 @@ class RelayController:
             except ValueError:
                 print(f"[RELAY] Invalid RELAY_PIN env value '{env_relay_pin}', falling back to {relay_pin}")
 
-        # Align with relay.txt reference (pin 17). If user did not explicitly override (still default 18) choose 17.
-        if relay_pin == 18 and os.getenv("RELAY_PIN") is None:
-            # Switch to 17 for consistency with fingerprint implementation
-            relay_pin = 17
+        # Use pin 18 by default unless RELAY_PIN is provided via environment
 
         self.relay_pin = relay_pin
         self.led_pin = led_pin
@@ -65,10 +62,12 @@ class RelayController:
         # Determine active level (many 5V relay modules are active LOW)
         try:
             import os
-            raw_active_low = os.getenv("RELAY_ACTIVE_LOW", "false").strip().lower()
+            # Default to active-low relays (most 5V modules): HIGH = locked (inactive), LOW = unlocked (active)
+            raw_active_low = os.getenv("RELAY_ACTIVE_LOW", "true").strip().lower()
             self.active_low = raw_active_low in ("1", "true", "yes", "on")
         except Exception:
-            self.active_low = False
+            # Fallback to active-low behavior
+            self.active_low = True
         
         # Diagnostic: log GPIO availability and chosen pins
         try:
@@ -108,12 +107,14 @@ class RelayController:
             
             self.gpio_initialized = True
             print(f"[RELAY] GPIO initialized successfully on pin {self.relay_pin}")
-            print(f"[RELAY] 🔒 Door LOCKED (Security feature: door locked by default)")
+            print(f"[RELAY] Door LOCKED (Security feature: door locked by default)")
             
         except Exception as e:
             print(f"[RELAY] GPIO initialization failed: {e}")
             self.gpio_initialized = False
     
+    # Note: dynamic reconfigure has been removed to simplify runtime behavior
+
     def activate_door_relay(self, duration=3, callback=None):
         """
         Activate door relay for specified duration
@@ -144,7 +145,7 @@ class RelayController:
         if self.gpio_initialized:
             # Real GPIO control
             try:
-                print(f"[RELAY] 🔓 UNLOCKING door relay for {duration} seconds (successful attendance)")
+                print(f"[RELAY] UNLOCKING door relay for {duration} seconds (successful attendance)")
                 
                 # Turn on relay and LED - UNLOCK DOOR
                 # Unlock relay considering active level
@@ -175,13 +176,13 @@ class RelayController:
                 return False
         else:
             # Simulation mode
-            print(f"[RELAY] SIMULATION: 🔓 Door relay UNLOCKED for {duration} seconds (successful attendance)")
+            print(f"[RELAY] SIMULATION: Door relay UNLOCKED for {duration} seconds (successful attendance)")
             self.door_locked = False
             
             # Auto-lock simulation
             def sim_lock():
                 self.door_locked = True
-                print("[RELAY] SIMULATION: 🔒 Door relay auto-LOCKED")
+                print("[RELAY] SIMULATION: Door relay auto-LOCKED")
                 if callback:
                     callback()
                     
@@ -198,7 +199,7 @@ class RelayController:
                 GPIO.output(self.relay_pin, GPIO.LOW if not self.active_low else GPIO.HIGH)
                 GPIO.output(self.led_pin, GPIO.LOW)
                 self.door_locked = True
-                print("[RELAY] 🔒 Door relay LOCKED (auto-lock after timeout)")
+                print("[RELAY] Door relay LOCKED (auto-lock after timeout)")
                 print(f"[RELAY] State after lock -> door_locked={self.door_locked}")
             except Exception as e:
                 print(f"[RELAY] Error deactivating relay: {e}")
@@ -206,7 +207,7 @@ class RelayController:
                 self._ensure_locked()
         else:
             self.door_locked = True
-            print("[RELAY] SIMULATION: 🔒 Door relay LOCKED (auto-lock)")
+            print("[RELAY] SIMULATION: Door relay LOCKED (auto-lock)")
     
     def _ensure_locked(self):
         """Emergency function to ensure door is locked"""
@@ -215,7 +216,7 @@ class RelayController:
                 GPIO.output(self.relay_pin, GPIO.LOW if not self.active_low else GPIO.HIGH)
                 GPIO.output(self.led_pin, GPIO.LOW)
                 self.door_locked = True
-                print("[RELAY] 🔒 Emergency LOCK activated")
+                print("[RELAY] Emergency LOCK activated")
             except:
                 pass
     
@@ -270,7 +271,7 @@ class RelayController:
                 GPIO.output(self.led_pin, GPIO.LOW)
                 GPIO.output(self.buzzer_pin, GPIO.LOW)
                 self.door_locked = True
-                print("[RELAY] 🔒 Door LOCKED before GPIO cleanup (security)")
+                print("[RELAY] Door LOCKED before GPIO cleanup (security)")
                 GPIO.cleanup()
                 print("[RELAY] GPIO cleanup completed")
             except Exception as e:

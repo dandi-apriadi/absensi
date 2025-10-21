@@ -18,7 +18,7 @@ serial_port = serial.Serial('/dev/serial0', baudrate=57600, timeout=1)
 fingerprint = Adafruit_Fingerprint(serial_port)
 
 # Setup GPIO for Relay
-RELAY_PIN = 17
+RELAY_PIN = 18
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 GPIO.setup(RELAY_PIN, GPIO.OUT)

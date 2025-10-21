@@ -26,6 +26,9 @@ argon2-cffi==23.1.0
 # HTTP requests for backend API
 requests==2.31.0
 
+# Lightweight HTTP server for remote edge control
+Flask==3.0.2
+
 # On Raspberry Pi OS, prefer OS packages for OpenCV or prebuilt wheels to avoid long builds.
 # uuid is part of Python stdlib, no external package needed.
 
